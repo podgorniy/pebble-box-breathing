@@ -1,0 +1,30 @@
+{
+    "author": "srhj278cff@privaterelay.appleid.com",
+    "dependencies": {},
+    "keywords": [],
+    "name": "box-breathing",
+    "pebble": {
+        "capabilities": [
+            "health"
+        ],
+        "displayName": "Box Breathing",
+        "enableMultiJS": true,
+        "messageKeys": [],
+        "projectType": "native",
+        "resources": {
+            "media": []
+        },
+        "sdkVersion": "3",
+        "targetPlatforms": [
+            "basalt",
+            "chalk",
+            "diorite",
+            "emery"
+        ],
+        "uuid": "27227283-f930-43d6-9343-f33d2e265e3d",
+        "watchapp": {
+            "watchface": false
+        }
+    },
+    "version": "0.1.0"
+}
