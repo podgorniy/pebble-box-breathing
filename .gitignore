@@ -1,2 +1,4 @@
 build
 .lock*build
+*.zip
+export_project.sh

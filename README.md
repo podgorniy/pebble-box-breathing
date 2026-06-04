@@ -1,24 +1,23 @@
 # Box Breathing
 
-A minimal, native C watchapp for Pebble/Rebble smartwatches that guides users through a 4-4-4-4 box breathing exercise (4 seconds inhale, 4 seconds hold, 4 seconds exhale, 4 seconds hold).
+A calm little Pebble watchapp that guides you through 4-4-4-4 box breathing — inhale, hold, exhale, hold — so you can close your eyes and just breathe.
 
-## Features
-- Centered, continuous visual progress bar indicating the current breathing phase.
-- Configurable vibration feedback so you can close your eyes:
-  - **Every Second**: Pulses every second and on phase changes.
-  - **Phase Only**: Pulses only when transitioning to a new phase.
-  - **Off**: No vibrations.
-- Manually toggle the backlight to stay on.
-- Your vibration and backlight preferences are automatically saved.
+<p align="center">
+  <img src="screenshots/screenshot.jpg" alt="Box Breathing on Pebble Time 2" width="240">
+</p>
 
 ## Controls
-- **Top Button**: Pause/Resume the breathing cycle (short press) or Reset the session (long press).
-- **Middle Button**: Cycle through the vibration modes.
-- **Bottom Button**: Toggle the always-on backlight.
 
-# App store page
+- **Top button** — pause / resume (short press) · reset session (long press)
+- **Middle button** — cycle vibration mode (every second → phase only → off)
+- **Bottom button** — toggle always-on backlight
 
-https://apps.rePebble.com/2ac1cc737a7048d19b242a09
+Your vibration mode and backlight choice are remembered between launches.
+
+## Get it
+
+[apps.rePebble.com](https://apps.rePebble.com/2ac1cc737a7048d19b242a09)
 
 ## License
-This project is licensed under the GNU General Public License v3.0 (GPLv3) - see the [LICENSE](LICENSE) file for details.
+
+[GPLv3](LICENSE)

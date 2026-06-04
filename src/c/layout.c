@@ -40,8 +40,8 @@ Layout* layout_create(LayoutOrientation orientation, int size) {
   Layout *this = (Layout*)malloc(sizeof(Layout));
   this->orientation = orientation;
   this->size = size;
-  this->layer_array = (Layer**)malloc(size * sizeof(Layer*));
-  this->weight_array = (int*)malloc(size * sizeof(int));
+  this->layer_array = (Layer**)calloc(size, sizeof(Layer*));
+  this->weight_array = (int*)calloc(size, sizeof(int));
   return this;
 }
 

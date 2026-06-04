@@ -7,6 +7,10 @@ typedef enum {
   LayoutOrientationHorizontal
 } LayoutOrientation;
 
+// glossary: layout_slot
+// Proportional vertical/horizontal Layout Slot manager. Each slot occupies
+// `weight%` of the parent window's available extent; total weights must sum
+// to ≤ 100. This app uses 4 vertical slots with weights 31/41/28/0.
 typedef struct {
   LayoutOrientation orientation;
   int size;
