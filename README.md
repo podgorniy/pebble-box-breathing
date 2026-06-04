@@ -11,5 +11,10 @@ A minimal, native C watchapp for Pebble/Rebble smartwatches that guides users th
 - Manually toggle the backlight to stay on.
 - Your vibration and backlight preferences are automatically saved.
 
+## Controls
+- **Top Button**: Pause/Resume the breathing cycle (short press) or Reset the session (long press).
+- **Middle Button**: Cycle through the vibration modes.
+- **Bottom Button**: Toggle the always-on backlight.
+
 ## License
 This project is licensed under the GNU General Public License v3.0 (GPLv3) - see the [LICENSE](LICENSE) file for details.
