@@ -1,5 +1,5 @@
 {
-    "author": "Podgorniy",
+    "author": "Dmytro",
     "dependencies": {},
     "keywords": ["breathing", "box breathing", "breath control", "meditation", "relaxation", "mindfulness", "focus", "calm", "mindfulness"],
     "name": "bb",
@@ -13,12 +13,7 @@
             "media": []
         },
         "sdkVersion": "3",
-        "targetPlatforms": [
-            "basalt",
-            "chalk",
-            "diorite",
-            "emery"
-        ],
+        "targetPlatforms": ["aplite", "basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
         "uuid": "27227283-f930-43d6-9343-f33d2e265e3d",
         "watchapp": {
             "watchface": false

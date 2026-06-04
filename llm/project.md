@@ -15,7 +15,7 @@ A native C watchapp for Pebble/Rebble smartwatches that guides users through a 1
   - **Middle Button**: Cycle through the vibration modes.
   - **Bottom Button**: Toggle the always-on backlight.
 - **UI Design**: A minimal, high-contrast layout driven by a vertical layout manager. Includes a 24-hour clock, session duration timer, and native vector-drawn state indicators for vibration mode, pause state, and backlight status. Supports color (Pebble Time series) and monochrome (Pebble Classic, Pebble 2) displays via fallback colors.
-- **Compatibility**: Targets `aplite`, `basalt`, `chalk`, `diorite`, and `emery` platforms.
+- **Compatibility**: Targets `aplite`, `basalt`, `chalk`, `diorite`, `emery`, `flint`, and `gabbro` platforms.
 
 ## Core Project Structure
 - `src/c/main.c`: Application lifecycle, settings persistence, button subscriptions, and main 1-second/100ms tick loops.
