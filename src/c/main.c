@@ -37,20 +37,27 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
   ui_update_status();
 }
 
-static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
-  g_state.vibration_mode = (g_state.vibration_mode + 1) % 3;
-  persist_write_int(0, g_state.vibration_mode);
-  light_enable(g_state.vibration_mode == VIBE_OFF);
-  ui_update_status();
-}
-
-static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
+static void up_long_click_handler(ClickRecognizerRef recognizer, void *context) {
   reset_session();
   ui_update_all();
 }
 
+static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
+  g_state.vibration_mode = (g_state.vibration_mode + 1) % 3;
+  persist_write_int(0, g_state.vibration_mode);
+  ui_update_status();
+}
+
+static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  g_state.backlight_always_on = !g_state.backlight_always_on;
+  persist_write_bool(1, g_state.backlight_always_on);
+  light_enable(g_state.backlight_always_on);
+  ui_update_status();
+}
+
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
+  window_long_click_subscribe(BUTTON_ID_UP, 500, up_long_click_handler, NULL);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
   window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
@@ -58,10 +65,11 @@ static void click_config_provider(void *context) {
 static void init() {
   g_state.paused = false;
   g_state.vibration_mode = persist_exists(0) ? persist_read_int(0) : VIBE_EVERY_SECOND;
+  g_state.backlight_always_on = persist_exists(1) ? persist_read_bool(1) : false;
   g_state.current_time = time(NULL);
   reset_session();
   
-  light_enable(g_state.vibration_mode == VIBE_OFF);
+  light_enable(g_state.backlight_always_on);
   
   ui_init();
   window_set_click_config_provider(ui_get_window(), click_config_provider);

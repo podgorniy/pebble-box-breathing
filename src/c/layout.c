@@ -3,6 +3,8 @@
 static void reflow(Layout *this) {
   GSize window_size = this->window_size;
   int size = this->size;
+  int current_y = 0;
+  int current_x = 0;
 
   for(int i = 0; i < size; i++) { 
     // Skip missing layers
@@ -12,18 +14,21 @@ static void reflow(Layout *this) {
 
     GRect frame;
     frame.origin.x = 0;
-    frame.size.w = window_size.w;
+    frame.origin.y = 0;
+    frame.size = window_size;
 
     switch(this->orientation) {
       case LayoutOrientationVertical: {
         int height = (window_size.h * this->weight_array[i]) / 100;
-        frame.origin.y = i * height;
+        frame.origin.y = current_y;
         frame.size.h = height;
+        current_y += height;
       } break;
       case LayoutOrientationHorizontal: {
         int width = (window_size.w * this->weight_array[i]) / 100;
-        frame.origin.x = i * width;
+        frame.origin.x = current_x;
         frame.size.w = width;
+        current_x += width;
       } break;
     }
 

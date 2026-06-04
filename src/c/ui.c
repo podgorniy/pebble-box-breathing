@@ -25,12 +25,6 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_draw_rect(ctx, bounds);
   
-  // Draw segment dividers
-  int segment_w = bar_w / 4;
-  for (int i = 1; i < 4; i++) {
-    graphics_draw_line(ctx, GPoint(bar_x + i * segment_w, bar_y), GPoint(bar_x + i * segment_w, bar_y + bar_h));
-  }
-  
   // Fill inside
   float fill_pct = breathing_get_fill();
   int fill_w = (int)((bar_w - 2) * fill_pct);
@@ -40,42 +34,39 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, COLOR_FALLBACK(GColorCyan, GColorWhite));
   graphics_fill_rect(ctx, GRect(bar_x + 1, bar_y + 1, fill_w, bar_h - 2), 0, GCornerNone);
   
-  // Draw marker
-  int marker_x = 0;
+  // Determine Text and Color
   const char *text = "";
+  GColor text_color = GColorWhite;
   switch (g_state.current_phase) {
     case PHASE_INHALE: 
-      marker_x = segment_w / 2; 
       text = "In";
       break;
     case PHASE_HOLD_FULL: 
-      marker_x = segment_w + segment_w / 2; 
       text = "Hold";
+      text_color = GColorBlack; // Dark color when full
       break;
     case PHASE_EXHALE: 
-      marker_x = 2 * segment_w + segment_w / 2; 
       text = "Out";
       break;
     case PHASE_HOLD_EMPTY: 
-      marker_x = 3 * segment_w + segment_w / 2; 
       text = "Hold";
+      text_color = GColorWhite; // Light color when empty
       break;
   }
-  
-  graphics_context_set_fill_color(ctx, COLOR_FALLBACK(GColorYellow, GColorWhite));
-  graphics_fill_circle(ctx, GPoint(bar_x + marker_x, bar_y - 5), 3); // draw slightly above
 
-  // Draw Text with drop shadow
+  // Draw Text with drop shadow (shadow only for white text for contrast, or always draw a subtle shadow)
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
   GRect text_bounds = GRect(bar_x, bar_y + (bar_h - 24) / 2 - 4, bar_w, 24);
   
-  // Shadow
-  graphics_context_set_text_color(ctx, GColorBlack);
-  GRect shadow_bounds = GRect(bar_x + 1, bar_y + (bar_h - 24) / 2 - 3, bar_w, 24);
-  graphics_draw_text(ctx, text, font, shadow_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+  if (text_color == GColorWhite) {
+    // Shadow
+    graphics_context_set_text_color(ctx, GColorBlack);
+    GRect shadow_bounds = GRect(bar_x + 1, bar_y + (bar_h - 24) / 2 - 3, bar_w, 24);
+    graphics_draw_text(ctx, text, font, shadow_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
+  }
   
   // Main Text
-  graphics_context_set_text_color(ctx, GColorWhite);
+  graphics_context_set_text_color(ctx, text_color);
   graphics_draw_text(ctx, text, font, text_bounds, GTextOverflowModeWordWrap, GTextAlignmentCenter, NULL);
 }
 
@@ -88,18 +79,30 @@ static void status_update_proc(Layer *layer, GContext *ctx) {
   int right_x = w - 15;
   int left_x = 15;
   
+  int vibe_y = center_y - 5;
+  int light_y = center_y + 10;
+  
   graphics_context_set_stroke_color(ctx, GColorWhite);
   graphics_context_set_fill_color(ctx, GColorWhite);
   
-  // Draw Vibe Mode (Right side)
+  // Draw Vibe Mode (Right side, upper)
   if (g_state.vibration_mode == VIBE_EVERY_SECOND) {
-    graphics_fill_circle(ctx, GPoint(right_x, center_y), 5);
+    graphics_fill_circle(ctx, GPoint(right_x, vibe_y), 4);
   } else if (g_state.vibration_mode == VIBE_PHASE_ONLY) {
-    graphics_draw_circle(ctx, GPoint(right_x, center_y), 5);
+    graphics_draw_circle(ctx, GPoint(right_x, vibe_y), 4);
   } else {
     // Vibe Off (Crossed out circle)
-    graphics_draw_circle(ctx, GPoint(right_x, center_y), 5);
-    graphics_draw_line(ctx, GPoint(right_x - 4, center_y - 4), GPoint(right_x + 4, center_y + 4));
+    graphics_draw_circle(ctx, GPoint(right_x, vibe_y), 4);
+    graphics_draw_line(ctx, GPoint(right_x - 4, vibe_y - 4), GPoint(right_x + 4, vibe_y + 4));
+  }
+
+  // Draw Brightness Mode (Right side, lower)
+  if (g_state.backlight_always_on) {
+    graphics_fill_circle(ctx, GPoint(right_x, light_y), 3);
+    graphics_draw_line(ctx, GPoint(right_x - 5, light_y), GPoint(right_x + 5, light_y));
+    graphics_draw_line(ctx, GPoint(right_x, light_y - 5), GPoint(right_x, light_y + 5));
+  } else {
+    graphics_draw_circle(ctx, GPoint(right_x, light_y), 3);
   }
 
   // Draw Pause State (Left side)

@@ -17,6 +17,7 @@ typedef enum {
 
 typedef struct {
   bool paused;
+  bool backlight_always_on;
 
   VibrationMode vibration_mode;
 
