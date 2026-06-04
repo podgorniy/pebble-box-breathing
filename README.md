@@ -16,5 +16,9 @@ A minimal, native C watchapp for Pebble/Rebble smartwatches that guides users th
 - **Middle Button**: Cycle through the vibration modes.
 - **Bottom Button**: Toggle the always-on backlight.
 
+# App store page
+
+https://apps.rePebble.com/2ac1cc737a7048d19b242a09
+
 ## License
 This project is licensed under the GNU General Public License v3.0 (GPLv3) - see the [LICENSE](LICENSE) file for details.
