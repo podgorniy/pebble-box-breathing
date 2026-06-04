@@ -2,11 +2,9 @@
     "author": "srhj278cff@privaterelay.appleid.com",
     "dependencies": {},
     "keywords": [],
-    "name": "box-breathing",
+    "name": "bb",
     "pebble": {
-        "capabilities": [
-            "health"
-        ],
+        "capabilities": [],
         "displayName": "Box Breathing",
         "enableMultiJS": true,
         "messageKeys": [],

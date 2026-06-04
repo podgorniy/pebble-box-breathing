@@ -3,7 +3,6 @@
 #include "ui.h"
 #include "breathing.h"
 #include "vibration.h"
-#include "heart_rate.h"
 
 AppState g_state;
 static AppTimer *s_animation_timer;
@@ -12,11 +11,6 @@ static void reset_session() {
   g_state.session_elapsed_ms = 0;
   g_state.cycle_elapsed_ms = 0;
   g_state.current_phase = PHASE_INHALE;
-  
-  g_state.bpm_history_count = 0;
-  for (int i = 0; i < 180; i++) {
-    g_state.bpm_valid[i] = false;
-  }
 }
 
 static void anim_timer_callback(void *data) {
@@ -33,7 +27,6 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (!g_state.paused) {
     if (units_changed & SECOND_UNIT) {
       g_state.session_elapsed_ms += 1000;
-      heart_rate_update_second();
     }
   }
   ui_update_clock();
@@ -46,6 +39,8 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
 
 static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   g_state.vibration_mode = (g_state.vibration_mode + 1) % 3;
+  persist_write_int(0, g_state.vibration_mode);
+  light_enable(g_state.vibration_mode == VIBE_OFF);
   ui_update_status();
 }
 
@@ -62,20 +57,20 @@ static void click_config_provider(void *context) {
 
 static void init() {
   g_state.paused = false;
-  g_state.vibration_mode = VIBE_EVERY_SECOND;
+  g_state.vibration_mode = persist_exists(0) ? persist_read_int(0) : VIBE_EVERY_SECOND;
   g_state.current_time = time(NULL);
   reset_session();
   
+  light_enable(g_state.vibration_mode == VIBE_OFF);
+  
   ui_init();
   window_set_click_config_provider(ui_get_window(), click_config_provider);
-  heart_rate_init();
   
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
   s_animation_timer = app_timer_register(100, anim_timer_callback, NULL);
 }
 
 static void deinit() {
-  heart_rate_deinit();
   ui_deinit();
 }
 

@@ -23,7 +23,7 @@ void vibration_trigger_for_second(uint32_t cycle_sec) {
 
   if (g_state.vibration_mode == VIBE_PHASE_ONLY) {
     if (is_phase_boundary) {
-      vibes_enqueue_custom_pattern(s_long_pulse);
+      vibes_enqueue_custom_pattern(s_short_pulse);
     }
   } else if (g_state.vibration_mode == VIBE_EVERY_SECOND) {
     if (is_phase_boundary) {

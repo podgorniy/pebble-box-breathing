@@ -23,13 +23,6 @@ typedef struct {
   uint32_t session_elapsed_ms;
   uint32_t cycle_elapsed_ms; // 0 to 15999 ms
 
-  int current_bpm;
-  bool bpm_available;
-
-  int bpm_history[180];
-  bool bpm_valid[180];
-  int bpm_history_count;
-
   time_t current_time;
   
   BreathingPhase current_phase;
