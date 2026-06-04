@@ -6,7 +6,7 @@
     "pebble": {
         "capabilities": [],
         "displayName": "Box Breathing",
-        "enableMultiJS": false,
+        "enableMultiJS": true,
         "messageKeys": [],
         "projectType": "native",
         "resources": {

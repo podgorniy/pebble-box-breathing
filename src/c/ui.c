@@ -58,7 +58,7 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
   GRect text_bounds = GRect(bar_x, bar_y + (bar_h - 24) / 2 - 4, bar_w, 24);
   
-  if (text_color == GColorWhite) {
+  if (gcolor_equal(text_color, GColorWhite)) {
     // Shadow
     graphics_context_set_text_color(ctx, GColorBlack);
     GRect shadow_bounds = GRect(bar_x + 1, bar_y + (bar_h - 24) / 2 - 3, bar_w, 24);
