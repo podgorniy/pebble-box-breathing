@@ -13,6 +13,17 @@ typedef enum {
   VIBE_OFF
 } VibrationMode;
 
+// glossary: display_mode, display_default, display_backlight, display_minimal
+// DISPLAY_DEFAULT — backlight off, HR sampling on, full layout.
+// DISPLAY_BACKLIGHT — Backlight Always-On enabled, HR sampling on, full layout.
+// DISPLAY_MINIMAL — backlight off, HR sampling off; Current HR Display + HR Graph
+//                   hidden so Breathing Circle expands into freed vertical space.
+typedef enum {
+  DISPLAY_DEFAULT,
+  DISPLAY_BACKLIGHT,
+  DISPLAY_MINIMAL
+} DisplayMode;
+
 // glossary: phase, inhale_phase, hold_full_phase, exhale_phase, hold_empty_phase
 typedef enum {
   PHASE_INHALE,
@@ -24,7 +35,7 @@ typedef enum {
 // glossary: app_state
 typedef struct {
   bool paused;                      // glossary: pause_state
-  bool backlight_always_on;         // glossary: backlight_always_on
+  DisplayMode display_mode;         // glossary: display_mode, backlight_always_on
 
   VibrationMode vibration_mode;     // glossary: vibe_mode
 

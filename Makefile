@@ -7,6 +7,11 @@ p:
 e:
 	pebble install --emulator emery
 
+e1:
+	pebble install --emulator flint
+
 bp: b p
 
 be: b e
+
+be1: b e1

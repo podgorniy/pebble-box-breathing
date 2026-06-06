@@ -23,12 +23,33 @@ static Layer *s_graph_layer;
 
 static void breathing_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
-  int cx = bounds.size.w / 2;
-  int cy = bounds.size.h / 2;
+  // glossary: breathing_circle
+  // Center Breathing Circle on the watchface (window center), not on the
+  // breathing Layout Slot — slot 1 sits below the window's vertical midpoint
+  // because slot 0 (top container) is 31%, so without this correction the
+  // circle hangs noticeably low (especially in DISPLAY_MINIMAL where slot 1
+  // is 69%). cx/cy are in layer-local coordinates.
+  GRect frame = layer_get_frame(layer);
+  GRect win_bounds = layer_get_bounds(window_get_root_layer(s_window));
+  int cx = win_bounds.size.w / 2 - frame.origin.x;
+  int cy = win_bounds.size.h / 2 - frame.origin.y;
 
-  int half = bounds.size.w < bounds.size.h ? bounds.size.w / 2 : bounds.size.h / 2;
-  int max_r = half;       // glossary: inhaled_reference_outline  (max radius)
-  int min_r = 24;         // glossary: exhaled_reference_outline  (min radius)
+  // Max radius starts as the smaller of the four distances from (cx,cy) to a
+  // layer edge — the slot-fit maximum — then expanded so the Inhaled
+  // Reference Outline bleeds past slot 1 into the surrounding window. This
+  // overflow is only visible because ui_init sets layer_set_clips(false) on
+  // the breathing layer; otherwise the GContext would clip at the layer rect.
+  int top_room   = cy;
+  int bot_room   = bounds.size.h - cy;
+  int left_room  = cx;
+  int right_room = bounds.size.w - cx;
+  int max_r = top_room;
+  if (bot_room   < max_r) max_r = bot_room;
+  if (left_room  < max_r) max_r = left_room;
+  if (right_room < max_r) max_r = right_room;
+  max_r = (max_r * 7) / 5;  // +40%
+
+  int min_r = 19;         // glossary: exhaled_reference_outline  (min radius)
   if (max_r < min_r) max_r = min_r;
 
   float fill = breathing_get_fill();                       // glossary: phase_fill
@@ -112,12 +133,14 @@ static void status_update_proc(Layer *layer, GContext *ctx) {
 
   // Light indicator on right
   int light_x = center_x + spacing;
-  if (g_state.backlight_always_on) {
+  if (g_state.display_mode == DISPLAY_BACKLIGHT) {
     graphics_fill_circle(ctx, GPoint(light_x, center_y), 3);
     graphics_draw_line(ctx, GPoint(light_x - 5, center_y),
                             GPoint(light_x + 5, center_y));
     graphics_draw_line(ctx, GPoint(light_x, center_y - 5),
                             GPoint(light_x, center_y + 5));
+  } else if (g_state.display_mode == DISPLAY_MINIMAL) {
+    graphics_fill_circle(ctx, GPoint(light_x, center_y), 3);
   } else {
     graphics_draw_circle(ctx, GPoint(light_x, center_y), 3);
   }
@@ -187,12 +210,17 @@ static void top_container_update_proc(Layer *layer, GContext *ctx) {
   }
   icon_x += icon_spacing;
 
-  // glossary: backlight_indicator, backlight_always_on
-  // 4-point star = on; outline circle = off.
-  if (g_state.backlight_always_on) {
+  // glossary: backlight_indicator, display_mode, display_default,
+  //           display_backlight, display_minimal
+  // Outline circle = DEFAULT (backlight off, HR on);
+  // 4-point star = BACKLIGHT (backlight on, HR on);
+  // filled dot = MINIMAL (backlight off, HR off, big-circle layout).
+  if (g_state.display_mode == DISPLAY_BACKLIGHT) {
     graphics_fill_circle(ctx, GPoint(icon_x, icon_center_y), 3);
     graphics_draw_line(ctx, GPoint(icon_x - 5, icon_center_y), GPoint(icon_x + 5, icon_center_y));
     graphics_draw_line(ctx, GPoint(icon_x, icon_center_y - 5), GPoint(icon_x, icon_center_y + 5));
+  } else if (g_state.display_mode == DISPLAY_MINIMAL) {
+    graphics_fill_circle(ctx, GPoint(icon_x, icon_center_y), 3);
   } else {
     graphics_draw_circle(ctx, GPoint(icon_x, icon_center_y), 3);
   }
@@ -214,6 +242,8 @@ static void top_container_update_proc(Layer *layer, GContext *ctx) {
 static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
+  // glossary: display_minimal — HR Graph hidden entirely in MINIMAL.
+  if (g_state.display_mode == DISPLAY_MINIMAL) return;
   if (g_state.hr_sample_count == 0) return;
 
   int label_w = 28;
@@ -352,6 +382,9 @@ void ui_init(void) {
   // glossary: breathing_circle
   s_breathing_layer = layer_create(GRectZero);
   layer_set_update_proc(s_breathing_layer, breathing_update_proc);
+  // Allow Breathing Circle to render past slot 1 — the +20% Inhaled Reference
+  // Outline radius in breathing_update_proc would otherwise be clipped.
+  layer_set_clips(s_breathing_layer, false);
   layout_add_layer_with_params(s_root_layout, s_breathing_layer, 1, 41);
 
   // Slot 2: HR Graph — 28%
@@ -418,8 +451,11 @@ void ui_update_clock(void) {
            (unsigned)(g_state.completed_cycles % 20));
   text_layer_set_text(s_cycle_layer, cycle_buf);
 
-  // glossary: current_hr, current_hr_display
-  if (g_state.hr_sample_count > 0) {
+  // glossary: current_hr, current_hr_display, display_minimal
+  // Current HR Display is blank in MINIMAL (HR measurement disabled).
+  if (g_state.display_mode == DISPLAY_MINIMAL) {
+    hr_buf[0] = '\0';
+  } else if (g_state.hr_sample_count > 0) {
     uint8_t idx = (g_state.hr_write_idx + HR_SAMPLE_BUFFER - 1) % HR_SAMPLE_BUFFER;
     snprintf(hr_buf, sizeof(hr_buf), "%d", (int)g_state.hr_samples[idx]);
   } else {
@@ -445,4 +481,19 @@ void ui_update_all(void) {
   ui_update_status();
   ui_update_breathing();
   ui_update_graph();
+}
+
+// glossary: display_mode, display_minimal, layout_slot, breathing_circle, hr_graph
+// In MINIMAL, collapse Slot 2 (HR Graph) to 0% and grow Slot 1 (Breathing Circle)
+// to absorb the freed 28% — making the Filler Circle visibly larger. Order
+// matters: shrink first then grow so the layout module's weight-sum guard
+// (sums all current weights, must stay ≤ 100) never trips.
+void ui_apply_display_mode(void) {
+  if (g_state.display_mode == DISPLAY_MINIMAL) {
+    layout_add_layer_with_params(s_root_layout, s_graph_layer, 2, 0);
+    layout_add_layer_with_params(s_root_layout, s_breathing_layer, 1, 69);
+  } else {
+    layout_add_layer_with_params(s_root_layout, s_breathing_layer, 1, 41);
+    layout_add_layer_with_params(s_root_layout, s_graph_layer, 2, 28);
+  }
 }

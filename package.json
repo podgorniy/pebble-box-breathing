@@ -11,7 +11,18 @@
         "projectType": "native",
         "sources": ["src/c"],
         "resources": {
-            "media": []
+            "media": [
+                {
+                    "type": "png",
+                    "name": "ICON_80x80",
+                    "file": "icon_80x80.png"
+                },
+                {
+                    "type": "png",
+                    "name": "ICON_144x144",
+                    "file": "icon_144x144.png"
+                }
+            ]
         },
         "sdkVersion": "3",
         "targetPlatforms": ["aplite", "basalt", "chalk", "diorite", "emery", "flint", "gabbro"],

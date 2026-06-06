@@ -29,8 +29,8 @@ HR Sample · HR Sample Buffer · HR Write Index · HR Graph · HR Min Label · H
 **Status Strip**
 Status Strip · Vibe Indicator · Backlight Indicator · Pause Indicator
 
-**Backlight**
-Backlight Always-On
+**Display mode**
+Display Mode · Display Default · Display Backlight · Display Minimal · Backlight Always-On · Minimal Mode
 
 **Top container**
 Clock · Session Elapsed Display · Cycle Counter Display · Current HR Display
@@ -87,9 +87,14 @@ Top Button · Middle Button · Bottom Button
 
 **Status Strip** — horizontal row of indicator icons centered in the top container; auto-recenters when Pause Indicator appears / disappears.
 **Vibe Indicator** — red Folly circle in Status Strip: filled = Vibe Every Second, outlined = Vibe Phase Only, crossed-outlined = Vibe Off.
-**Backlight Indicator** — icon in Status Strip: 4-point star = Backlight Always-On enabled, outline circle = disabled.
+**Backlight Indicator** — icon in Status Strip reflecting Display Mode: outline circle = Display Default, 4-point star = Display Backlight, filled dot = Display Minimal.
 
-**Backlight Always-On** — user toggle forcing the Pebble backlight on for the duration of the Session; persisted across launches.
+**Display Mode** — user-cycled, persisted three-state setting controlling Backlight Always-On and HR sampling: Display Default → Display Backlight → Display Minimal → … Persisted to Backlight Persist Key as int.
+**Display Default** — backlight off, HR sampling on, full 31/41/28/0 Layout Slot weights. App's launch default.
+**Display Backlight** — Backlight Always-On enabled, HR sampling on, full layout. (Equivalent to the legacy "backlight on" toggle.)
+**Display Minimal** — backlight off, HR sampling off (period 0); Current HR Display blanked and HR Graph hidden; Layout Slot weights reflowed to 31/69/0/0 so the Breathing Circle expands into the freed 28%.
+**Backlight Always-On** — backlight forced on for the Session; active iff Display Mode == Display Backlight.
+**Minimal Mode** — synonym for Display Minimal.
 
 **Clock** — current wall time, top-left of top container, 24h or 12h per system setting.
 **Session Elapsed Display** — top-right cyan MM:SS rendering of Session Elapsed.
@@ -114,7 +119,7 @@ Top Button · Middle Button · Bottom Button
 
 The app runs a continuous Box Breathing loop driven by two clocks (Tick Handler + Animation Timer), renders a Breathing Circle plus Status Strip plus HR Graph, persists Vibe Mode and Backlight Always-On between launches, and reads heart rate once per Cycle.
 
-The user controls only three things: Pause State (via Top Button short), Reset (via Top Button long), Vibe Mode (via Middle Button), Backlight Always-On (via Bottom Button).
+The user controls only four things: Pause State (via Top Button short), Reset (via Top Button long), Vibe Mode (via Middle Button), Display Mode (via Bottom Button — cycles Display Default → Display Backlight → Display Minimal).
 
 ---
 
@@ -124,7 +129,7 @@ The user controls only three things: Pause State (via Top Button short), Reset (
 Single global `g_state` aggregating all runtime values:
 
 - `paused` → Pause State
-- `backlight_always_on` → Backlight Always-On
+- `display_mode` → Display Mode (DISPLAY_DEFAULT / DISPLAY_BACKLIGHT / DISPLAY_MINIMAL)
 - `vibration_mode` → Vibe Mode
 - `session_elapsed_ms` → Session Elapsed (ms)
 - `cycle_elapsed_sec` → Cycle Elapsed Sec (`0–15`)
@@ -138,7 +143,7 @@ Single global `g_state` aggregating all runtime values:
 
 ### 3.2 Persisted state
 - Vibe Mode Persist Key (key `0`, int) — survives app close.
-- Backlight Persist Key (key `1`, bool) — survives app close.
+- Backlight Persist Key (key `1`, int) — stores Display Mode across launches. Older builds wrote a bool here; on upgrade `persist_read_int` returns 0 and the user falls back to Display Default.
 All other AppState fields reset on each launch.
 
 ---
@@ -200,11 +205,15 @@ Top Button long re-initializes Session Elapsed, Completed Cycles, Cycle Elapsed 
 ### 4.8 Vibe Mode cycling
 Middle Button advances Vibe Mode through Every Second → Phase Only → Off → Every Second … and persists to Vibe Mode Persist Key. Status Strip redraws so the Vibe Indicator reflects the new mode.
 
-### 4.9 Backlight Always-On toggle
-Bottom Button flips Backlight Always-On, persists to Backlight Persist Key, calls `light_enable(...)`, and redraws Status Strip so the Backlight Indicator reflects the new state.
+### 4.9 Display Mode cycling
+Bottom Button advances Display Mode through Default → Backlight → Minimal → Default …, persists to Backlight Persist Key (int), then applies the new mode:
+- Backlight: `light_enable(true)` iff Backlight; otherwise `light_enable(false)`.
+- HR sampling: `health_service_set_heart_rate_sample_period(0)` in Minimal, `16` otherwise.
+- Layout: `ui_apply_display_mode()` reflows Slot 1 / Slot 2 weights (41/28 ↔ 69/0) so the Breathing Circle grows in Minimal.
+- Status Strip + all displays redraw via `ui_update_all()`.
 
 ### 4.10 Init / deinit lifecycle
-- `init`: read Vibe Mode + Backlight Always-On from persist; Reset; enable backlight per setting; request HR sampling period; capture initial HR Sample; build UI; subscribe Tick Handler; arm Animation Timer.
+- `init`: read Vibe Mode + Display Mode from persist (clamped to valid range); Reset; enable backlight iff Display Backlight; set HR sampling period (0 for Minimal, else 16); capture initial HR Sample (skipped in Minimal); build UI; apply Display Mode layout; subscribe Tick Handler; arm Animation Timer.
 - `deinit`: zero HR sampling period; destroy UI.
 
 ---
@@ -245,17 +254,17 @@ Reserved status Layer kept for future use; weight 0 so it occupies no vertical s
 | UP short | Toggle Pause State | Top Button |
 | UP long  | Reset             | Top Button |
 | SELECT short | Advance Vibe Mode | Middle Button |
-| DOWN short | Toggle Backlight Always-On | Bottom Button |
+| DOWN short | Advance Display Mode (Default → Backlight → Minimal) | Bottom Button |
 
 ---
 
 ## 7. Architecture & files
 
 - `src/c/main.c` — app lifecycle (init / deinit), Tick Handler (Cycle progression, HR Sample at Cycle Wrap, Session-Complete Vibe, Completed Cycles increment), Animation Timer registration, all four Button click handlers, Vibe Mode + Backlight Always-On persistence, initial HR Sample capture, Reset.
-- `src/c/app_state.h` — `AppState` struct, `BreathingPhase` enum (Inhale / Hold Full / Exhale / Hold Empty Phase), `VibrationMode` enum (Vibe Every Second / Phase Only / Off), `HR_SAMPLE_BUFFER` = 20 = Target Cycles.
+- `src/c/app_state.h` — `AppState` struct, `BreathingPhase` enum (Inhale / Hold Full / Exhale / Hold Empty Phase), `VibrationMode` enum (Vibe Every Second / Phase Only / Off), `DisplayMode` enum (Default / Backlight / Minimal), `HR_SAMPLE_BUFFER` = 20 = Target Cycles.
 - `src/c/breathing.c` / `.h` — Phase determination from elapsed ms, `breathing_update` (Animation Timer hook, advances Anim Sub Ms), `breathing_tick` (Tick Handler hook, advances Cycle Elapsed Sec, returns Cycle Wrap), `breathing_get_fill` (Phase Fill computation).
 - `src/c/vibration.c` / `.h` — Short Vibe / Long Vibe / Session-Complete Vibe pattern definitions; `vibration_trigger_for_second` (Vibe Mode dispatcher); `vibration_trigger_session_complete`.
-- `src/c/ui.c` / `.h` — all rendering: Breathing Circle (Filler Circle + Exhaled / Inhaled Reference Outlines), Status Strip (Pause / Vibe / Backlight Indicators), top container text layers (Clock, Session Elapsed Display, Cycle Counter Display, Current HR Display), HR Graph (line, dots, HR Min/Max Labels).
+- `src/c/ui.c` / `.h` — all rendering: Breathing Circle (Filler Circle + Exhaled / Inhaled Reference Outlines), Status Strip (Pause / Vibe / Backlight Indicators), top container text layers (Clock, Session Elapsed Display, Cycle Counter Display, Current HR Display), HR Graph (line, dots, HR Min/Max Labels). `ui_apply_display_mode()` reflows Layout Slot weights for Display Minimal.
 - `src/c/layout.c` / `.h` — proportional vertical Layout Slot manager.
 
 ### 7.1 Vibe sync invariant

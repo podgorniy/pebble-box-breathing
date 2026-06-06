@@ -44,12 +44,15 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
     vibration_trigger_for_second(g_state.cycle_elapsed_sec);  // glossary: vibe_mode_dispatch
 
     if (wrapped) {
-      // glossary: hr_sample, hr_sample_buffer, hr_write_index
-      HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
-      if (hr > 30 && hr < 250) {
-        g_state.hr_samples[g_state.hr_write_idx] = (int16_t)hr;
-        g_state.hr_write_idx = (g_state.hr_write_idx + 1) % HR_SAMPLE_BUFFER;
-        if (g_state.hr_sample_count < HR_SAMPLE_BUFFER) g_state.hr_sample_count++;
+      // glossary: hr_sample, hr_sample_buffer, hr_write_index, display_minimal
+      // Skip HR Sample capture entirely in DISPLAY_MINIMAL (sensor is also idled).
+      if (g_state.display_mode != DISPLAY_MINIMAL) {
+        HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
+        if (hr > 30 && hr < 250) {
+          g_state.hr_samples[g_state.hr_write_idx] = (int16_t)hr;
+          g_state.hr_write_idx = (g_state.hr_write_idx + 1) % HR_SAMPLE_BUFFER;
+          if (g_state.hr_sample_count < HR_SAMPLE_BUFFER) g_state.hr_sample_count++;
+        }
       }
 
       // glossary: completed_cycles, target_cycles, session_complete_vibe
@@ -72,10 +75,12 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
   ui_update_status();
 }
 
-// glossary: hr_sample, initial_hr_sample
+// glossary: hr_sample, initial_hr_sample, display_minimal
 // Captures one synchronous HR Sample at launch / on Reset, so Current HR
 // Display and HR Graph are non-blank from the start when the sensor has data.
+// No-op in DISPLAY_MINIMAL — sensor is idled and HR UI is hidden.
 static void sample_initial_hr(void) {
+  if (g_state.display_mode == DISPLAY_MINIMAL) return;
   HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
   if (hr > 30 && hr < 250) {
     g_state.hr_samples[0] = (int16_t)hr;
@@ -101,13 +106,27 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   ui_update_status();
 }
 
-// glossary: bottom_button, backlight_always_on, backlight_persist_key
-// Bottom Button → toggle Backlight Always-On, persist, apply.
+// glossary: bottom_button, display_mode, backlight_always_on, backlight_persist_key
+// Bottom Button → advance Display Mode (Default → Backlight → Minimal → …),
+// persist, apply backlight + HR sampling + layout.
 static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
-  g_state.backlight_always_on = !g_state.backlight_always_on;
-  persist_write_bool(1, g_state.backlight_always_on);
-  light_enable(g_state.backlight_always_on);
-  ui_update_status();
+  DisplayMode prev_mode = g_state.display_mode;
+  g_state.display_mode = (g_state.display_mode + 1) % 3;
+  persist_write_int(1, g_state.display_mode);
+
+  light_enable(g_state.display_mode == DISPLAY_BACKLIGHT);
+  (void)health_service_set_heart_rate_sample_period(
+      g_state.display_mode == DISPLAY_MINIMAL ? 0 : 16);
+
+  // Leaving MINIMAL: grab one HR Sample synchronously so Current HR Display
+  // and HR Graph populate immediately on the mode switch, without waiting for
+  // the next Cycle Wrap.
+  if (prev_mode == DISPLAY_MINIMAL && g_state.display_mode != DISPLAY_MINIMAL) {
+    sample_initial_hr();
+  }
+
+  ui_apply_display_mode();
+  ui_update_all();
 }
 
 // glossary: top_button, middle_button, bottom_button
@@ -123,15 +142,20 @@ static void click_config_provider(void *context) {
 static void init() {
   g_state.paused = false;
   g_state.vibration_mode = persist_exists(0) ? persist_read_int(0) : VIBE_EVERY_SECOND;
-  g_state.backlight_always_on = persist_exists(1) ? persist_read_bool(1) : false;
+  // Display Mode persists as int. Old builds wrote a bool here; persist_read_int
+  // returns 0 for that, which maps to DISPLAY_DEFAULT — acceptable migration.
+  g_state.display_mode = persist_exists(1) ? persist_read_int(1) : DISPLAY_DEFAULT;
+  if (g_state.display_mode > DISPLAY_MINIMAL) g_state.display_mode = DISPLAY_DEFAULT;
   g_state.current_time = time(NULL);
   reset_session();
 
-  light_enable(g_state.backlight_always_on);
-  (void)health_service_set_heart_rate_sample_period(16);
+  light_enable(g_state.display_mode == DISPLAY_BACKLIGHT);
+  (void)health_service_set_heart_rate_sample_period(
+      g_state.display_mode == DISPLAY_MINIMAL ? 0 : 16);
   sample_initial_hr();
 
   ui_init();
+  ui_apply_display_mode();
   window_set_click_config_provider(ui_get_window(), click_config_provider);
 
   tick_timer_service_subscribe(SECOND_UNIT, tick_handler);
