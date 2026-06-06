@@ -2,8 +2,8 @@
   "uuid": "27227283-f930-43d6-9343-f33d2e265e3d",
   "shortName": "Box Breathing",
   "longName": "Box Breathing",
-  "companyName": "Dmytro",
-  "versionLabel": "0.2.0",
+  "companyName": "podgorniy",
+  "versionLabel": "0.3.0",
   "sdkVersion": "3",
   "targetPlatforms": ["aplite", "basalt", "chalk", "diorite", "emery", "flint", "gabbro"],
   "watchapp": {

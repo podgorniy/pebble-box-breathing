@@ -1,5 +1,5 @@
 {
-    "author": "Dmytro",
+    "author": "podgorniy",
     "dependencies": {},
     "keywords": ["breathing", "box breathing", "breath control", "meditation", "relaxation", "mindfulness", "focus", "calm", "mindfulness"],
     "name": "bb",
@@ -31,5 +31,5 @@
             "watchface": false
         }
     },
-    "version": "0.2.0"
+    "version": "0.3.0"
 }
