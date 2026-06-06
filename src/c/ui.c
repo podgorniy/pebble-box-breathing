@@ -447,8 +447,10 @@ void ui_update_clock(void) {
   text_layer_set_text(s_session_layer, session_buf);
 
   // glossary: cycle_counter, target_cycles
+  // Counter keeps incrementing past Target Cycles (no modulo wrap), so the
+  // displayed value matches Completed Cycles for the whole Session.
   snprintf(cycle_buf, sizeof(cycle_buf), "%u/20",
-           (unsigned)(g_state.completed_cycles % 20));
+           (unsigned)g_state.completed_cycles);
   text_layer_set_text(s_cycle_layer, cycle_buf);
 
   // glossary: current_hr, current_hr_display, display_minimal

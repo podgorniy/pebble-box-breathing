@@ -56,7 +56,7 @@ Top Button · Middle Button · Bottom Button
 **Session** — user-initiated run from app launch / last Reset until app close or next Reset.
 **Session Elapsed** — wall time since Session started, shown as MM:SS in Session Elapsed Display.
 **Completed Cycles** — total Cycles finished in the current Session (monotonic).
-**Cycle Counter** — value `Completed Cycles mod Target Cycles`, rendered in Cycle Counter Display as `X/20`.
+**Cycle Counter** — equals Completed Cycles directly (no Target Cycles wrap), rendered in Cycle Counter Display as `X/20`. Display reads `21/20`, `22/20`, … past the first batch; only Session-Complete Vibe still fires on multiples of Target Cycles.
 **Target Cycles** — per-batch goal of 20 Cycles; every multiple reached fires Session-Complete Vibe.
 **Reset** — clears Session Elapsed, Completed Cycles, Cycle Elapsed Sec, Anim Sub Ms, HR Sample Buffer; then re-captures an initial HR Sample.
 
