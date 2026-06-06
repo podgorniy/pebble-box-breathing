@@ -33,6 +33,12 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   GRect win_bounds = layer_get_bounds(window_get_root_layer(s_window));
   int cx = win_bounds.size.w / 2 - frame.origin.x;
   int cy = win_bounds.size.h / 2 - frame.origin.y;
+  // glossary: display_minimal
+  // In MINIMAL the circle grows (+80%) and slot 1 extends to the window
+  // bottom; shift the center down so the larger disc doesn't crowd slot 0.
+  if (g_state.display_mode == DISPLAY_MINIMAL) {
+    cy += 12;
+  }
 
   // Max radius starts as the smaller of the four distances from (cx,cy) to a
   // layer edge — the slot-fit maximum — then expanded so the Inhaled
@@ -47,7 +53,15 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   if (bot_room   < max_r) max_r = bot_room;
   if (left_room  < max_r) max_r = left_room;
   if (right_room < max_r) max_r = right_room;
-  max_r = (max_r * 7) / 5;  // +40%
+  // glossary: display_minimal
+  // top_room (= 31% slot 0) is the binding constraint in both modes, so the
+  // slot-1 weight change alone doesn't grow the circle. In MINIMAL the HR
+  // Graph is hidden, so we can bleed further down/out without colliding.
+  if (g_state.display_mode == DISPLAY_MINIMAL) {
+    max_r = (max_r * 7) / 5;  // +40%
+  } else {
+    max_r = (max_r * 7) / 5;  // +40%
+  }
 
   int min_r = 19;         // glossary: exhaled_reference_outline  (min radius)
   if (max_r < min_r) max_r = min_r;
