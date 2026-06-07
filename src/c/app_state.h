@@ -20,15 +20,22 @@ typedef enum {
   VIBE_OFF
 } VibrationMode;
 
-// glossary: display_mode, display_default, display_backlight, display_minimal
+// glossary: display_mode, display_default, display_backlight, display_minimal,
+//           display_battery_saver
 // DISPLAY_DEFAULT — backlight off, HR sampling on, full layout.
 // DISPLAY_BACKLIGHT — Backlight Always-On enabled, HR sampling on, full layout.
 // DISPLAY_MINIMAL — backlight off, HR sampling off; Current HR Display + HR Graph
 //                   hidden so Breathing Circle expands into freed vertical space.
+// DISPLAY_BATTERY_SAVER — backlight off, HR sampling off; tick handler runs at
+//                   MINUTE_UNIT so the screen only redraws once per minute. A
+//                   1 Hz AppTimer carries vibes + cycle bookkeeping. Filler
+//                   Circle pinned at max radius; Session Elapsed / Cycle
+//                   Counter / Current HR blanked; Phase Dot Indicator hidden.
 typedef enum {
   DISPLAY_DEFAULT,
   DISPLAY_BACKLIGHT,
-  DISPLAY_MINIMAL
+  DISPLAY_MINIMAL,
+  DISPLAY_BATTERY_SAVER
 } DisplayMode;
 
 // glossary: phase, inhale_phase, hold_full_phase, exhale_phase, hold_empty_phase

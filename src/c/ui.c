@@ -35,11 +35,12 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   GRect win_bounds = layer_get_bounds(window_get_root_layer(s_window));
   int cx = win_bounds.size.w / 2 - frame.origin.x;
   int cy = win_bounds.size.h / 2 - frame.origin.y;
-  // glossary: display_minimal
-  // In MINIMAL the circle grows and slot 1 extends to the window bottom; shift
-  // the center down so the larger disc settles inside the freed lower half
-  // instead of crowding the top container.
-  if (g_state.display_mode == DISPLAY_MINIMAL) {
+  // glossary: display_minimal, display_battery_saver
+  // In MINIMAL and BATTERY_SAVER the circle grows and slot 1 extends to the
+  // window bottom; shift the center down so the larger disc settles inside
+  // the freed lower half instead of crowding the top container.
+  if (g_state.display_mode == DISPLAY_MINIMAL ||
+      g_state.display_mode == DISPLAY_BATTERY_SAVER) {
     cy += 16;
   }
 
@@ -70,6 +71,12 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   if (max_r < min_r) max_r = min_r;
 
   float fill = breathing_get_fill();                       // glossary: phase_fill
+  // glossary: display_battery_saver
+  // Pin Filler Circle at its smallest state (radius = min_r, the Exhale
+  // endpoint) so the screen never needs to redraw between Phases.
+  if (g_state.display_mode == DISPLAY_BATTERY_SAVER) {
+    fill = 0.0f;
+  }
   int radius = min_r + (int)((max_r - min_r) * fill + 0.5f);
 
   GPoint center = GPoint(cx, cy);
@@ -78,11 +85,17 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, COLOR_FALLBACK(GColorCyan, GColorWhite));
   graphics_fill_circle(ctx, center, radius);
 
-  // glossary: exhaled_reference_outline, inhaled_reference_outline
+  // glossary: exhaled_reference_outline, inhaled_reference_outline,
+  //           display_battery_saver
   // Thin Cobalt-Blue outlines that mark the radius bounds of Filler Circle.
+  // In BATTERY_SAVER only the outer (Inhaled Reference) outline is drawn —
+  // it frames the static Exhale-state disc; the inner outline would be
+  // covered by the filler anyway.
   graphics_context_set_stroke_color(ctx, GColorCobaltBlue);
   graphics_context_set_stroke_width(ctx, 1);
-  graphics_draw_circle(ctx, center, min_r);
+  if (g_state.display_mode != DISPLAY_BATTERY_SAVER) {
+    graphics_draw_circle(ctx, center, min_r);
+  }
   graphics_draw_circle(ctx, center, max_r);
   // Restore stroke for phase label outline
   graphics_context_set_stroke_color(ctx, GColorBlack);
@@ -222,9 +235,11 @@ static void technique_layer_update_proc(Layer *layer, GContext *ctx) {
     }
   }
 
-  // glossary: phase_dot_indicator
+  // glossary: phase_dot_indicator, display_battery_saver
+  // Phase Dot Indicator is suppressed in DISPLAY_BATTERY_SAVER so the top
+  // container has nothing that needs to redraw between Phase Boundaries.
   uint8_t idx = technique_phase_index(t, g_state.current_phase);
-  if (idx < seg_count) {
+  if (idx < seg_count && g_state.display_mode != DISPLAY_BATTERY_SAVER) {
     graphics_context_set_fill_color(ctx, GColorWhite);
     int dot_y = bounds.size.h - 2;
     if (dot_y < text_h + 5) dot_y = text_h + 5;
@@ -297,16 +312,21 @@ static void top_container_update_proc(Layer *layer, GContext *ctx) {
   icon_x += icon_spacing;
 
   // glossary: backlight_indicator, display_mode, display_default,
-  //           display_backlight, display_minimal
+  //           display_backlight, display_minimal, display_battery_saver
   // Outline circle = DEFAULT (backlight off, HR on);
   // 4-point star = BACKLIGHT (backlight on, HR on);
-  // filled dot = MINIMAL (backlight off, HR off, big-circle layout).
+  // filled dot = MINIMAL (backlight off, HR off, big-circle layout);
+  // tiny battery glyph = BATTERY_SAVER (minute-tick + frozen UI).
   if (g_state.display_mode == DISPLAY_BACKLIGHT) {
     graphics_fill_circle(ctx, GPoint(icon_x, icon_center_y), 3);
     graphics_draw_line(ctx, GPoint(icon_x - 5, icon_center_y), GPoint(icon_x + 5, icon_center_y));
     graphics_draw_line(ctx, GPoint(icon_x, icon_center_y - 5), GPoint(icon_x, icon_center_y + 5));
   } else if (g_state.display_mode == DISPLAY_MINIMAL) {
     graphics_fill_circle(ctx, GPoint(icon_x, icon_center_y), 3);
+  } else if (g_state.display_mode == DISPLAY_BATTERY_SAVER) {
+    // 9x5 outline rect centered on (icon_x, icon_center_y) + 2x3 nub on right.
+    graphics_draw_rect(ctx, GRect(icon_x - 4, icon_center_y - 2, 9, 5));
+    graphics_fill_rect(ctx, GRect(icon_x + 5, icon_center_y - 1, 2, 3), 0, GCornerNone);
   } else {
     graphics_draw_circle(ctx, GPoint(icon_x, icon_center_y), 3);
   }
@@ -335,8 +355,11 @@ static void top_container_update_proc(Layer *layer, GContext *ctx) {
 static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   GRect bounds = layer_get_bounds(layer);
 
-  // glossary: display_minimal — HR Graph hidden entirely in MINIMAL.
-  if (g_state.display_mode == DISPLAY_MINIMAL) return;
+  // glossary: display_minimal, display_battery_saver
+  // HR Graph hidden entirely in MINIMAL and BATTERY_SAVER (sensor idled
+  // in both; layout collapses Slot 2 to weight 0).
+  if (g_state.display_mode == DISPLAY_MINIMAL ||
+      g_state.display_mode == DISPLAY_BATTERY_SAVER) return;
   if (g_state.hr_sample_count == 0) return;
 
   int label_w = 28;
@@ -561,25 +584,37 @@ void ui_update_clock(void) {
            clock_is_24h_style() ? "%H:%M" : "%I:%M", tick_time);
   text_layer_set_text(s_clock_layer, clock_buf);
 
-  // glossary: session_elapsed, session_elapsed_display
-  int session_s = (g_state.session_elapsed_ms / 1000) % 60;
-  int session_m = (g_state.session_elapsed_ms / 1000) / 60;
-  snprintf(session_buf, sizeof(session_buf), "%02d:%02d", session_m, session_s);
+  // glossary: session_elapsed, session_elapsed_display, display_battery_saver
+  // Session Elapsed Display is blank in BATTERY_SAVER.
+  if (g_state.display_mode == DISPLAY_BATTERY_SAVER) {
+    session_buf[0] = '\0';
+  } else {
+    int session_s = (g_state.session_elapsed_ms / 1000) % 60;
+    int session_m = (g_state.session_elapsed_ms / 1000) / 60;
+    snprintf(session_buf, sizeof(session_buf), "%02d:%02d", session_m, session_s);
+  }
   text_layer_set_text(s_session_layer, session_buf);
 
-  // glossary: cycle_counter, target_cycles
+  // glossary: cycle_counter, target_cycles, display_battery_saver
   // Counter keeps incrementing past Target Cycles (no modulo wrap), so the
   // displayed value matches Completed Cycles for the whole Session.
-  snprintf(cycle_buf, sizeof(cycle_buf), "%u/20",
-           (unsigned)g_state.completed_cycles);
+  // Blank in BATTERY_SAVER.
+  if (g_state.display_mode == DISPLAY_BATTERY_SAVER) {
+    cycle_buf[0] = '\0';
+  } else {
+    snprintf(cycle_buf, sizeof(cycle_buf), "%u/20",
+             (unsigned)g_state.completed_cycles);
+  }
   text_layer_set_text(s_cycle_layer, cycle_buf);
 
-  // glossary: current_hr, current_hr_display, display_minimal
-  // Current HR Display is blank in MINIMAL (HR measurement disabled).
-  // Outside MINIMAL, read g_state.current_hr directly — it's the latest
-  // valid BPM regardless of whether the most recent buffer slot is a
-  // sentinel from a skipped Cycle.
-  if (g_state.display_mode == DISPLAY_MINIMAL) {
+  // glossary: current_hr, current_hr_display, display_minimal,
+  //           display_battery_saver
+  // Current HR Display is blank in MINIMAL and BATTERY_SAVER (HR sensor
+  // idled in both). Outside those modes, read g_state.current_hr directly
+  // — it's the latest valid BPM regardless of whether the most recent
+  // buffer slot is a sentinel from a skipped Cycle.
+  if (g_state.display_mode == DISPLAY_MINIMAL ||
+      g_state.display_mode == DISPLAY_BATTERY_SAVER) {
     hr_buf[0] = '\0';
   } else if (g_state.current_hr > 0) {
     snprintf(hr_buf, sizeof(hr_buf), "%d", (int)g_state.current_hr);
@@ -617,13 +652,16 @@ void ui_update_all(void) {
   ui_update_technique();
 }
 
-// glossary: display_mode, display_minimal, layout_slot, breathing_circle, hr_graph
-// In MINIMAL, collapse Slot 2 (HR Graph) to 0% and grow Slot 1 (Breathing Circle)
-// to absorb the freed 28% — making the Filler Circle visibly larger. Order
-// matters: shrink first then grow so the layout module's weight-sum guard
-// (sums all current weights, must stay ≤ 100) never trips.
+// glossary: display_mode, display_minimal, display_battery_saver, layout_slot,
+//           breathing_circle, hr_graph
+// In MINIMAL and BATTERY_SAVER, collapse Slot 2 (HR Graph) to 0% and grow
+// Slot 1 (Breathing Circle) to absorb the freed 28% — making the Filler
+// Circle visibly larger. Order matters: shrink first then grow so the
+// layout module's weight-sum guard (sums all current weights, must stay
+// ≤ 100) never trips.
 void ui_apply_display_mode(void) {
-  if (g_state.display_mode == DISPLAY_MINIMAL) {
+  if (g_state.display_mode == DISPLAY_MINIMAL ||
+      g_state.display_mode == DISPLAY_BATTERY_SAVER) {
     layout_add_layer_with_params(s_root_layout, s_graph_layer, 2, 0);
     layout_add_layer_with_params(s_root_layout, s_breathing_layer, 1, 69);
   } else {
