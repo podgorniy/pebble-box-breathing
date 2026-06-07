@@ -11,7 +11,7 @@ A calm little Pebble watchapp that guides you through paced breathing — inhale
 - **Top button** — pause / resume (short press) · reset session (long press)
 - **Middle button** — cycle vibration mode (every second → phase only → off)
 - **Middle button (long press)** — cycle breathing technique (classic 4-4-4-4 → beginner 3-3-3-3 → extended 5-5-5-5 → meditation 6-6-6-6 → advanced 8-8-8-8 → extended exhale 4-4-6-4 → 4-7-8)
-- **Bottom button** — cycle display mode (default → always-on backlight → minimal)
+- **Bottom button** — cycle display mode (default → always-on backlight → minimal → battery saver)
 
 Your vibration mode, breathing technique, and display choice are remembered between launches.
 

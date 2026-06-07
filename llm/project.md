@@ -33,13 +33,13 @@ HR Sample · HR Sample Buffer · HR Write Index · HR Graph · HR Min Label · H
 Status Strip · Vibe Indicator · Backlight Indicator · Pause Indicator
 
 **Display mode**
-Display Mode · Display Default · Display Backlight · Display Minimal · Backlight Always-On · Minimal Mode
+Display Mode · Display Default · Display Backlight · Display Minimal · Display Battery Saver · Backlight Always-On · Minimal Mode
 
 **Top container**
 Clock · Session Elapsed Display · Cycle Counter Display · Current HR Display
 
 **Engine / architecture**
-Tick Handler · Animation Timer · Cycle Elapsed Sec · Anim Sub Ms · Vibe Mode Persist Key · Backlight Persist Key · Technique Persist Key · Layout Slot
+Tick Handler · Animation Timer · Second Timer · Cycle Elapsed Sec · Anim Sub Ms · Vibe Mode Persist Key · Backlight Persist Key · Technique Persist Key · Layout Slot
 
 **Controls**
 Top Button · Middle Button · Middle Button Long · Bottom Button
@@ -106,12 +106,13 @@ Top Button · Middle Button · Middle Button Long · Bottom Button
 
 **Status Strip** — horizontal row of indicator icons centered in the top container; auto-recenters when Pause Indicator appears / disappears.
 **Vibe Indicator** — red Folly circle in Status Strip: filled = Vibe Every Second, outlined = Vibe Phase Only, crossed-outlined = Vibe Off.
-**Backlight Indicator** — icon in Status Strip reflecting Display Mode: outline circle = Display Default, 4-point star = Display Backlight, filled dot = Display Minimal.
+**Backlight Indicator** — icon in Status Strip reflecting Display Mode: outline circle = Display Default, 4-point star = Display Backlight, filled dot = Display Minimal, battery glyph (rect + nub) = Display Battery Saver.
 
-**Display Mode** — user-cycled, persisted three-state setting controlling Backlight Always-On and HR sampling: Display Default → Display Backlight → Display Minimal → … Persisted to Backlight Persist Key as int.
+**Display Mode** — user-cycled, persisted four-state setting controlling Backlight Always-On, HR sampling, and tick cadence: Display Default → Display Backlight → Display Minimal → Display Battery Saver → … Persisted to Backlight Persist Key as int.
 **Display Default** — backlight off, HR sampling on, full 31/41/28/0 Layout Slot weights. App's launch default.
 **Display Backlight** — Backlight Always-On enabled, HR sampling on, full layout. (Equivalent to the legacy "backlight on" toggle.)
 **Display Minimal** — backlight off, HR sampling off (period 0); Current HR Display blanked and HR Graph hidden; Layout Slot weights reflowed to 31/69/0/0 so the Breathing Circle expands into the freed 28%.
+**Display Battery Saver** — backlight off, HR sampling off (period 0). Tick Handler re-subscribed to MINUTE_UNIT so the screen only redraws once per minute (Clock only); a 1 Hz Second Timer carries per-second work (vibes, cycle progression, Session-Complete Vibe) while the Animation Timer is suppressed. Filler Circle is pinned at the Exhale endpoint (radius = min_r) and the Exhaled Reference Outline is suppressed; only the Inhaled Reference Outline remains. Session Elapsed Display, Cycle Counter Display, Current HR Display, and Phase Dot Indicator are blanked / suppressed; HR Graph hidden; Layout reflowed to 31/69/0/0 as in Display Minimal.
 **Backlight Always-On** — backlight forced on for the Session; active iff Display Mode == Display Backlight.
 **Minimal Mode** — synonym for Display Minimal.
 
@@ -121,18 +122,19 @@ Top Button · Middle Button · Middle Button Long · Bottom Button
 **Current HR Display** — line beneath Cycle Counter Display, renders Current HR (or `--` until first HR Sample arrives).
 (Technique Display sits beneath the Clock in the left half — see "Breathing technique" group above.)
 
-**Tick Handler** — SECOND_UNIT subscriber; the **sole Vibe trigger** and the only writer of Cycle Elapsed Sec / Session Elapsed / Completed Cycles.
-**Animation Timer** — 100 ms repeating `AppTimer`; only advances Anim Sub Ms and redraws Filler Circle. Never fires Vibes.
+**Tick Handler** — Subscribed to SECOND_UNIT in normal modes (sole Vibe trigger; sole writer of Cycle Elapsed Sec / Session Elapsed / Completed Cycles) and to MINUTE_UNIT in Display Battery Saver (then it only refreshes the Clock; per-second work is delegated to Second Timer).
+**Animation Timer** — 100 ms repeating `AppTimer`; only advances Anim Sub Ms and redraws Filler Circle. Never fires Vibes. Self-suppresses (callback bails without re-registering) in Display Battery Saver; re-armed when the user leaves the mode.
+**Second Timer** — 1 Hz repeating `AppTimer` registered only while in Display Battery Saver. Calls the same per-second `do_second_work()` helper the SECOND_UNIT Tick Handler uses in other modes, so Cycle progression / Vibes / Session-Complete Vibe keep working with the screen frozen. Drifts slightly relative to wall-clock seconds (not aligned to the watch's seconds tick); acceptable because no Filler Circle animation depends on the alignment in this mode.
 **Cycle Elapsed Sec** — `0 .. (Cycle Length − 1)`, owned by Tick Handler.
 **Anim Sub Ms** — `0–999`, owned by Animation Timer, reset to 0 each Tick.
 **Vibe Mode Persist Key** — persist key `0`; stores Vibe Mode across launches.
-**Backlight Persist Key** — persist key `1`; stores Backlight Always-On across launches.
+**Backlight Persist Key** — persist key `1`, int; stores Display Mode across launches. (Name kept for backwards compatibility with the legacy bool-valued "backlight on" toggle.)
 **Layout Slot** — proportional vertical slice of the window. The app uses 4 Layout Slots with weights `31 / 41 / 28 / 0`.
 
 **Top Button** (UP) — short press = toggle Pause State; long press = Reset.
 **Middle Button** (SELECT short) — advance Vibe Mode (Every Second → Phase Only → Off → …).
 **Middle Button Long** (SELECT long, 500 ms) — advance Breathing Technique through the Phase Duration Table (Classic → Beginner → Extended → Meditation → Advanced → Extended-Exhale → 4-7-8 → Classic). Resets Cycle position only; keeps Session Elapsed, Completed Cycles, HR Sample Buffer.
-**Bottom Button** (DOWN) — cycle Display Mode (Default → Backlight → Minimal → …).
+**Bottom Button** (DOWN) — cycle Display Mode (Default → Backlight → Minimal → Battery Saver → …).
 
 ---
 
@@ -140,7 +142,7 @@ Top Button · Middle Button · Middle Button Long · Bottom Button
 
 The app runs a continuous paced-breathing loop driven by two clocks (Tick Handler + Animation Timer), renders a Breathing Circle plus Status Strip plus HR Graph plus Technique Display, persists Vibe Mode, Display Mode, and Breathing Technique between launches, and reads heart rate once per Cycle.
 
-The user controls only five things: Pause State (via Top Button short), Reset (via Top Button long), Vibe Mode (via Middle Button short), Breathing Technique (via Middle Button long), Display Mode (via Bottom Button — cycles Display Default → Display Backlight → Display Minimal).
+The user controls only five things: Pause State (via Top Button short), Reset (via Top Button long), Vibe Mode (via Middle Button short), Breathing Technique (via Middle Button long), Display Mode (via Bottom Button — cycles Display Default → Display Backlight → Display Minimal → Display Battery Saver).
 
 ---
 
@@ -150,7 +152,7 @@ The user controls only five things: Pause State (via Top Button short), Reset (v
 Single global `g_state` aggregating all runtime values:
 
 - `paused` → Pause State
-- `display_mode` → Display Mode (DISPLAY_DEFAULT / DISPLAY_BACKLIGHT / DISPLAY_MINIMAL)
+- `display_mode` → Display Mode (DISPLAY_DEFAULT / DISPLAY_BACKLIGHT / DISPLAY_MINIMAL / DISPLAY_BATTERY_SAVER)
 - `vibration_mode` → Vibe Mode
 - `breathing_technique` → Breathing Technique (TECHNIQUE_CLASSIC … TECHNIQUE_478)
 - `session_elapsed_ms` → Session Elapsed (ms)
@@ -211,15 +213,16 @@ Given current Phase, Cycle Elapsed Sec + Anim Sub Ms, and the Phase Duration `D`
 Filler Circle radius = `min_r + (max_r - min_r) * Phase Fill`.
 
 ### 4.5 HR sampling
-- An initial HR Sample is captured synchronously at app launch and on Reset, so Current HR Display and HR Graph aren't blank if the sensor already has a reading.
-- During runtime, HR Samples are captured at Cycle Wrap only — exactly one per Cycle.
-- Sensor sampling cadence is hinted via `health_service_set_heart_rate_sample_period(16)` at init (and `0` at deinit). On non-HR platforms this is a compile-time no-op.
+- An initial HR Sample is captured synchronously at app launch and on Reset, so Current HR Display and HR Graph aren't blank if the sensor already has a reading. Skipped in Display Minimal and Display Battery Saver — sensor is idled in both.
+- During runtime, HR Samples are captured at Cycle Wrap only — exactly one per Cycle. Cycles spent in Display Minimal or Display Battery Saver write the `HR_SAMPLE_NONE` sentinel so the HR Graph renders a visible gap for those Cycles instead of collapsing them out of the plot.
+- Sensor sampling cadence is set by `apply_display_mode_runtime()`: `16` in Display Default / Display Backlight, `0` in Display Minimal / Display Battery Saver. `deinit` zeros it. On non-HR platforms this is a compile-time no-op.
+- When the user transitions from a HR-off mode (Minimal / Battery Saver) to a HR-on mode, the sensor is also peeked once so Current HR Display refreshes immediately; the HR Sample Buffer is preserved (the gap from the HR-off span remains visible).
 - Each new HR Sample overwrites the slot at HR Write Index, then HR Write Index advances `(idx + 1) % 20`. `hr_sample_count` grows up to 20 then stays saturated (circular fill).
 
 ### 4.6 Pause / Resume
-Top Button short toggles Pause State.
-- Tick Handler keeps running every second (so Clock keeps ticking), but skips Cycle work and Vibe firing when paused.
-- Animation Timer keeps re-registering but skips Filler Circle updates.
+Top Button short toggles Pause State. `do_second_work()` returns early when paused, so Cycle progression and Vibe firing are skipped regardless of who drives it (Tick Handler in normal modes, Second Timer in Battery Saver).
+- Normal modes: Tick Handler keeps running every second (so Clock keeps ticking) and Animation Timer keeps re-registering but skips Filler Circle updates.
+- Display Battery Saver: Tick Handler keeps running every minute (Clock still refreshes); Second Timer keeps firing but no-ops; Animation Timer is suppressed regardless of pause.
 - Pause Indicator appears in Status Strip; the strip recenters to keep all visible indicators horizontally centered.
 
 ### 4.7 Reset
@@ -229,14 +232,16 @@ Top Button long re-initializes Session Elapsed, Completed Cycles, Cycle Elapsed 
 Middle Button advances Vibe Mode through Every Second → Phase Only → Off → Every Second … and persists to Vibe Mode Persist Key. Status Strip redraws so the Vibe Indicator reflects the new mode.
 
 ### 4.9 Display Mode cycling
-Bottom Button advances Display Mode through Default → Backlight → Minimal → Default …, persists to Backlight Persist Key (int), then applies the new mode:
+Bottom Button advances Display Mode through Default → Backlight → Minimal → Battery Saver → Default …, persists to Backlight Persist Key (int), then routes through `apply_display_mode_runtime(prev_mode)` which applies:
 - Backlight: `light_enable(true)` iff Backlight; otherwise `light_enable(false)`.
-- HR sampling: `health_service_set_heart_rate_sample_period(0)` in Minimal, `16` otherwise.
-- Layout: `ui_apply_display_mode()` reflows Slot 1 / Slot 2 weights (41/28 ↔ 69/0) so the Breathing Circle grows in Minimal.
+- HR sampling: `health_service_set_heart_rate_sample_period(0)` in Minimal and Battery Saver, `16` otherwise. When leaving Minimal or Battery Saver for a HR-on mode, the sensor is also peeked once so Current HR Display refreshes immediately.
+- Tick cadence: SECOND_UNIT in normal modes; MINUTE_UNIT in Battery Saver (resubscribed via `tick_timer_service_subscribe`).
+- Animation Timer / Second Timer lifecycle: entering Battery Saver registers the 1 Hz Second Timer (Animation Timer self-suppresses on its next fire); leaving Battery Saver re-arms the Animation Timer (Second Timer self-suppresses on its next fire).
+- Layout: `ui_apply_display_mode()` reflows Slot 1 / Slot 2 weights (41/28 ↔ 69/0) so the Breathing Circle grows in Minimal and Battery Saver.
 - Status Strip + all displays redraw via `ui_update_all()`.
 
 ### 4.10 Init / deinit lifecycle
-- `init`: read Vibe Mode + Display Mode + Breathing Technique from persist (each clamped to valid range; absent Breathing Technique → Classic Technique); Reset; enable backlight iff Display Backlight; set HR sampling period (0 for Minimal, else 16); capture initial HR Sample (skipped in Minimal); build UI; apply Display Mode layout; subscribe Tick Handler; arm Animation Timer.
+- `init`: read Vibe Mode + Display Mode + Breathing Technique from persist (each clamped to valid range; Display Mode clamps above `DISPLAY_BATTERY_SAVER` back to Default; absent Breathing Technique → Classic Technique); Reset; call `apply_display_mode_runtime(current_mode)` to set backlight + HR sampling period + tick subscription + the right AppTimer (Animation Timer in normal modes, Second Timer in Battery Saver); capture initial HR Sample (skipped in Minimal and Battery Saver); build UI; apply Display Mode layout.
 - `deinit`: zero HR sampling period; destroy UI.
 
 ### 4.11 Technique cycling
@@ -286,14 +291,14 @@ Reserved status Layer kept for future use; weight 0 so it occupies no vertical s
 | UP long  | Reset             | Top Button |
 | SELECT short | Advance Vibe Mode | Middle Button |
 | SELECT long  | Advance Breathing Technique | Middle Button Long |
-| DOWN short | Advance Display Mode (Default → Backlight → Minimal) | Bottom Button |
+| DOWN short | Advance Display Mode (Default → Backlight → Minimal → Battery Saver) | Bottom Button |
 
 ---
 
 ## 7. Architecture & files
 
-- `src/c/main.c` — app lifecycle (init / deinit), Tick Handler (Cycle progression, HR Sample at Cycle Wrap, Session-Complete Vibe, Completed Cycles increment), Animation Timer registration, all five Button click handlers (UP short/long, SELECT short/long, DOWN short), Vibe Mode + Display Mode + Breathing Technique persistence, initial HR Sample capture, Reset, and the `reset_cycle_position()` helper shared by Reset and Technique cycling.
-- `src/c/app_state.h` — `AppState` struct, `BreathingPhase` enum (Inhale / Hold Full / Exhale / Hold Empty Phase), `VibrationMode` enum (Vibe Every Second / Phase Only / Off), `DisplayMode` enum (Default / Backlight / Minimal), `HR_SAMPLE_BUFFER` = 20 = Target Cycles. Includes `techniques.h` for `BreathingTechnique`.
+- `src/c/main.c` — app lifecycle (init / deinit), Tick Handler (Cycle progression, HR Sample at Cycle Wrap, Session-Complete Vibe, Completed Cycles increment; subscribed to SECOND_UNIT in normal modes, MINUTE_UNIT in Battery Saver), Animation Timer + Second Timer registration, `do_second_work()` helper (per-second mutation + vibe firing shared by Tick Handler and Second Timer), `apply_display_mode_runtime()` helper (backlight, HR period, tick subscription, timer lifecycle), all five Button click handlers (UP short/long, SELECT short/long, DOWN short), Vibe Mode + Display Mode + Breathing Technique persistence, initial HR Sample capture, Reset, and the `reset_cycle_position()` helper shared by Reset and Technique cycling.
+- `src/c/app_state.h` — `AppState` struct, `BreathingPhase` enum (Inhale / Hold Full / Exhale / Hold Empty Phase), `VibrationMode` enum (Vibe Every Second / Phase Only / Off), `DisplayMode` enum (Default / Backlight / Minimal / Battery Saver), `HR_SAMPLE_BUFFER` = 20 = Target Cycles. Includes `techniques.h` for `BreathingTechnique`.
 - `src/c/techniques.c` / `.h` — `BreathingTechnique` enum, `TechniquePreset` struct, the Phase Duration Table (`g_techniques[]`), and helpers (`technique_current`, `technique_cycle_length_sec`, `technique_phase_at_sec`, `technique_phase_start_sec`, `technique_phase_duration_sec`, `technique_is_phase_boundary`, `technique_phase_index`).
 - `src/c/breathing.c` / `.h` — Phase determination via the Phase Duration Table, `breathing_update` (Animation Timer hook, advances Anim Sub Ms), `breathing_tick` (Tick Handler hook, advances Cycle Elapsed Sec mod Cycle Length, returns Cycle Wrap), `breathing_get_fill` (Phase Fill computation against current Phase Duration).
 - `src/c/vibration.c` / `.h` — Short Vibe / Long Vibe / Session-Complete Vibe pattern definitions; `vibration_trigger_for_second` (Vibe Mode dispatcher; consults the Phase Duration Table for Phase Boundary); `vibration_trigger_session_complete`.
@@ -301,7 +306,7 @@ Reserved status Layer kept for future use; weight 0 so it occupies no vertical s
 - `src/c/layout.c` / `.h` — proportional vertical Layout Slot manager.
 
 ### 7.1 Vibe sync invariant
-Cycle Elapsed Sec is owned by Tick Handler. Anim Sub Ms is owned by Animation Timer and reset to 0 by every Tick. **All Vibe firing happens inside Tick Handler.** This guarantees Vibes always land precisely on the watch's second boundaries.
+Cycle Elapsed Sec is owned by Tick Handler. Anim Sub Ms is owned by Animation Timer and reset to 0 by every Tick. In normal modes **all Vibe firing happens inside Tick Handler** (via `do_second_work()`), so Vibes land precisely on the watch's second boundaries. In Display Battery Saver the same `do_second_work()` runs from the 1 Hz Second Timer instead, which drifts slightly relative to wall-clock seconds — an acceptable trade-off since the Filler Circle is frozen in that mode and no animation depends on the alignment.
 
 ### 7.2 Layout safety
 `layout_create` zero-allocates both layer and weight arrays so the weight-sum guard in `layout_add_layer_with_params` is reliable.
