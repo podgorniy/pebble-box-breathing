@@ -1,7 +1,7 @@
 {
     "author": "podgorniy",
     "dependencies": {},
-    "keywords": ["breathing", "box breathing", "breath control", "meditation", "relaxation", "mindfulness", "focus", "calm", "mindfulness"],
+    "keywords": ["breathing", "box breathing", "breath control", "meditation", "relaxation", "mindfulness", "focus", "calm", "mindfulness", "4-4-4-4", "4-7-8"],
     "name": "bb",
     "pebble": {
         "capabilities": [],
@@ -31,5 +31,5 @@
             "watchface": false
         }
     },
-    "version": "0.3.0"
+    "version": "0.4.0"
 }
