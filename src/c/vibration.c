@@ -1,6 +1,7 @@
 #include <pebble.h>
 #include "vibration.h"
 #include "app_state.h"
+#include "techniques.h"
 
 // glossary: short_vibe
 static const uint32_t s_short_pulse_segments[] = { 50 };
@@ -33,13 +34,15 @@ void vibration_trigger_session_complete(void) {
 // glossary: vibe_mode_dispatch, vibe_mode, phase_boundary, short_vibe, long_vibe
 // Called once per second from Tick Handler with current Cycle Elapsed Sec.
 // Decides which Vibe (if any) to fire based on current Vibe Mode and whether
-// this second is a Phase Boundary (cycle_sec % 4 == 0).
+// this second is a Phase Boundary under the active Breathing Technique
+// (consults the Phase Duration Table).
 void vibration_trigger_for_second(uint32_t cycle_sec) {
   if (g_state.vibration_mode == VIBE_OFF) {       // glossary: vibe_off
     return;
   }
 
-  bool is_phase_boundary = (cycle_sec % 4 == 0);  // glossary: phase_boundary
+  // glossary: phase_boundary, phase_duration_table, breathing_technique
+  bool is_phase_boundary = technique_is_phase_boundary(technique_current(), cycle_sec);
 
   if (g_state.vibration_mode == VIBE_PHASE_ONLY) {  // glossary: vibe_phase_only
     if (is_phase_boundary) {

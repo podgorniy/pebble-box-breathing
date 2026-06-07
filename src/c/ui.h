@@ -11,6 +11,12 @@ void ui_update_clock(void);
 void ui_update_status(void);
 void ui_update_breathing(void);
 void ui_update_graph(void);
+
+// glossary: technique_display, phase_dot_indicator
+// Marks the Technique Display layer dirty so the Phase Dot Indicator follows
+// the active Phase. Cheap: only the small left-half row 2 layer redraws.
+void ui_update_technique(void);
+
 void ui_update_all(void);
 
 // glossary: display_mode, display_minimal, layout_slot

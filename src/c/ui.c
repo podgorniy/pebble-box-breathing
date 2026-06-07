@@ -3,6 +3,7 @@
 #include "app_state.h"
 #include "breathing.h"
 #include "layout.h"
+#include "techniques.h"
 
 static Window *s_window;
 static Layout *s_root_layout;
@@ -11,6 +12,7 @@ static TextLayer *s_clock_layer;
 static TextLayer *s_session_layer;
 static TextLayer *s_cycle_layer;
 static TextLayer *s_hr_layer;
+static Layer *s_technique_layer;   // glossary: technique_display, phase_dot_indicator
 static Layer *s_breathing_layer;
 static Layer *s_status_layer;
 static Layer *s_graph_layer;
@@ -34,10 +36,11 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   int cx = win_bounds.size.w / 2 - frame.origin.x;
   int cy = win_bounds.size.h / 2 - frame.origin.y;
   // glossary: display_minimal
-  // In MINIMAL the circle grows (+80%) and slot 1 extends to the window
-  // bottom; shift the center down so the larger disc doesn't crowd slot 0.
+  // In MINIMAL the circle grows and slot 1 extends to the window bottom; shift
+  // the center down so the larger disc settles inside the freed lower half
+  // instead of crowding the top container.
   if (g_state.display_mode == DISPLAY_MINIMAL) {
-    cy += 12;
+    cy += 16;
   }
 
   // Max radius starts as the smaller of the four distances from (cx,cy) to a
@@ -161,6 +164,75 @@ static void status_update_proc(Layer *layer, GContext *ctx) {
 }
 
 // ---------------------------------------------------------------------------
+// Technique Display (left half row 2) + Phase Dot Indicator
+// glossary: technique_display, phase_dot_indicator, breathing_technique,
+//           phase_duration_table
+// Lives as a child of the top container so it inherits Slot 0 positioning.
+// Renders the active Breathing Technique's display string (e.g. "4-4-4-4" or
+// "4-7-8") digit-segment by digit-segment so per-segment x-centres are known
+// and the Phase Dot Indicator can be placed under the active Phase's digit.
+// ---------------------------------------------------------------------------
+
+static void technique_layer_update_proc(Layer *layer, GContext *ctx) {
+  const TechniquePreset *t = technique_current();
+  GRect bounds = layer_get_bounds(layer);
+  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+  GColor text_color = COLOR_FALLBACK(GColorVividCerulean, GColorWhite);
+
+  int text_h = 18;
+  int box_h  = text_h + 7;  // extra room so Phase Dot Indicator clears the digit baseline
+  int centres[4] = {0};
+  int seg_count = 0;
+  int running_x = 0;
+  char seg_buf[4];
+
+  // glossary: technique_display
+  // Walk t->display; each digit-run = one Phase, separated by '-'. Measure each
+  // glyph run via graphics_text_layout_get_content_size so the Phase Dot
+  // Indicator sits exactly under the digit even when widths differ ("4-7-8").
+  const char *p = t->display;
+  graphics_context_set_text_color(ctx, text_color);
+  while (*p && seg_count < 4) {
+    int n = 0;
+    while (*p && *p != '-' && n < (int)sizeof(seg_buf) - 1) {
+      seg_buf[n++] = *p++;
+    }
+    seg_buf[n] = '\0';
+
+    if (n > 0) {
+      GSize sz = graphics_text_layout_get_content_size(
+        seg_buf, font, GRect(0, 0, 200, box_h),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
+      graphics_draw_text(ctx, seg_buf, font,
+        GRect(running_x, 0, sz.w + 2, box_h),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+      centres[seg_count++] = running_x + sz.w / 2;
+      running_x += sz.w;
+    }
+
+    if (*p == '-') {
+      GSize sz = graphics_text_layout_get_content_size(
+        "-", font, GRect(0, 0, 200, box_h),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft);
+      graphics_draw_text(ctx, "-", font,
+        GRect(running_x, 0, sz.w + 2, box_h),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+      running_x += sz.w;
+      p++;
+    }
+  }
+
+  // glossary: phase_dot_indicator
+  uint8_t idx = technique_phase_index(t, g_state.current_phase);
+  if (idx < seg_count) {
+    graphics_context_set_fill_color(ctx, GColorWhite);
+    int dot_y = bounds.size.h - 2;
+    if (dot_y < text_h + 5) dot_y = text_h + 5;
+    graphics_fill_circle(ctx, GPoint(centres[idx], dot_y), 2);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Top container — Slot 0
 // Hosts Clock, Session Elapsed Display, Cycle Counter Display, Current HR
 // Display, and Status Strip (Pause / Vibe / Backlight Indicators).
@@ -246,6 +318,13 @@ static void top_container_update_proc(Layer *layer, GContext *ctx) {
   // glossary: current_hr_display
   layer_set_frame(text_layer_get_layer(s_hr_layer),
     GRect(half_w, top + row1_h + 2 + row2_h + 2, right_w, row3_h));
+
+  // glossary: technique_display, phase_dot_indicator
+  // Left half row 2 — directly under Clock. Layer height is row2_h + dot
+  // padding so the Phase Dot Indicator sits a few pixels below the digit
+  // baseline with breathing room.
+  layer_set_frame(s_technique_layer,
+    GRect(side, top + row1_h + 2, half_w - side, row2_h + 7));
 }
 
 // ---------------------------------------------------------------------------
@@ -270,14 +349,21 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
   int ph = bounds.size.h - 6 - PBL_IF_ROUND_ELSE(8, 5) - 2;
   if (pw < 4 || ph < 4) return;
 
-  // Min/max over buffer (= session stats while buffer isn't full)
+  // Min/max over valid samples only. Sentinel slots (Cycles without a
+  // measurement, e.g. spent in MINIMAL) are skipped so they don't pull
+  // the y-range or render as bogus labels.
   int16_t mn = 250, mx = 30;
+  int valid_count = 0;
   for (int i = 0; i < g_state.hr_sample_count; i++) {
     uint8_t idx = (uint8_t)((g_state.hr_write_idx + HR_SAMPLE_BUFFER
                               - g_state.hr_sample_count + i) % HR_SAMPLE_BUFFER);
-    if (g_state.hr_samples[idx] < mn) mn = g_state.hr_samples[idx];
-    if (g_state.hr_samples[idx] > mx) mx = g_state.hr_samples[idx];
+    int16_t s = g_state.hr_samples[idx];
+    if (s == HR_SAMPLE_NONE) continue;
+    if (s < mn) mn = s;
+    if (s > mx) mx = s;
+    valid_count++;
   }
+  if (valid_count == 0) return;
   int16_t range = mx - mn;
   if (range < 5) range = 5;
 
@@ -328,6 +414,13 @@ static void hr_graph_update_proc(Layer *layer, GContext *ctx) {
                               - g_state.hr_sample_count + i) % HR_SAMPLE_BUFFER);
     int16_t hr = g_state.hr_samples[idx];
 
+    // Sentinel slot — Cycle had no valid HR. Leave a visible gap: skip the
+    // dot and break the connecting line on either side.
+    if (hr == HR_SAMPLE_NONE) {
+      has_prev = false;
+      continue;
+    }
+
     int x = px + (i * pw) / (HR_SAMPLE_BUFFER - 1);
     int y = py + ph - ((hr - mn) * ph / range);
     if (y < py)      y = py;
@@ -361,6 +454,11 @@ void ui_init(void) {
   // Slot 0: top container — 31%
   s_top_container = layer_create(GRectZero);
   layer_set_update_proc(s_top_container, top_container_update_proc);
+  // Allow Phase Dot Indicator to render past Slot 0's bottom edge — Slot 0's
+  // 31% height is just shy of fitting (Clock + Technique Display + dot
+  // padding). The dot's overflow lands in the empty top of Slot 1, above the
+  // Breathing Circle.
+  layer_set_clips(s_top_container, false);
 
   s_clock_layer = text_layer_create(GRectZero);
   text_layer_set_text_color(s_clock_layer, GColorWhite);
@@ -389,6 +487,14 @@ void ui_init(void) {
   text_layer_set_font(s_hr_layer, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD));
   text_layer_set_text_alignment(s_hr_layer, GTextAlignmentRight);
   layer_add_child(s_top_container, text_layer_get_layer(s_hr_layer));
+
+  // glossary: technique_display, phase_dot_indicator
+  s_technique_layer = layer_create(GRectZero);
+  layer_set_update_proc(s_technique_layer, technique_layer_update_proc);
+  // Dot sits 1 px past the layer's logical bottom; disable clipping so it
+  // renders fully (parent clip is also off — see s_top_container above).
+  layer_set_clips(s_technique_layer, false);
+  layer_add_child(s_top_container, s_technique_layer);
 
   layout_add_layer_with_params(s_root_layout, s_top_container, 0, 31);
 
@@ -423,6 +529,7 @@ void ui_deinit(void) {
   text_layer_destroy(s_session_layer);
   text_layer_destroy(s_cycle_layer);
   text_layer_destroy(s_hr_layer);
+  layer_destroy(s_technique_layer);
   layer_destroy(s_top_container);
   layer_destroy(s_breathing_layer);
   layer_destroy(s_status_layer);
@@ -469,11 +576,13 @@ void ui_update_clock(void) {
 
   // glossary: current_hr, current_hr_display, display_minimal
   // Current HR Display is blank in MINIMAL (HR measurement disabled).
+  // Outside MINIMAL, read g_state.current_hr directly — it's the latest
+  // valid BPM regardless of whether the most recent buffer slot is a
+  // sentinel from a skipped Cycle.
   if (g_state.display_mode == DISPLAY_MINIMAL) {
     hr_buf[0] = '\0';
-  } else if (g_state.hr_sample_count > 0) {
-    uint8_t idx = (g_state.hr_write_idx + HR_SAMPLE_BUFFER - 1) % HR_SAMPLE_BUFFER;
-    snprintf(hr_buf, sizeof(hr_buf), "%d", (int)g_state.hr_samples[idx]);
+  } else if (g_state.current_hr > 0) {
+    snprintf(hr_buf, sizeof(hr_buf), "%d", (int)g_state.current_hr);
   } else {
     snprintf(hr_buf, sizeof(hr_buf), "--");
   }
@@ -492,11 +601,20 @@ void ui_update_graph(void) {
   layer_mark_dirty(s_graph_layer);
 }
 
+// glossary: technique_display, phase_dot_indicator
+// Marks just the Technique Display layer dirty. Called whenever the current
+// Phase changes (from the Animation Timer hook in main.c) or the Breathing
+// Technique itself changes (from Middle Button long press).
+void ui_update_technique(void) {
+  layer_mark_dirty(s_technique_layer);
+}
+
 void ui_update_all(void) {
   ui_update_clock();
   ui_update_status();
   ui_update_breathing();
   ui_update_graph();
+  ui_update_technique();
 }
 
 // glossary: display_mode, display_minimal, layout_slot, breathing_circle, hr_graph

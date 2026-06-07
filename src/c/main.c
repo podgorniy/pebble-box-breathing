@@ -3,29 +3,45 @@
 #include "ui.h"
 #include "breathing.h"
 #include "vibration.h"
+#include "techniques.h"
 
 // glossary: app_state
 AppState g_state;
 static AppTimer *s_animation_timer;
 
-// glossary: reset, session, completed_cycles, hr_sample_buffer
-static void reset_session() {
-  g_state.session_elapsed_ms = 0;
+// glossary: cycle_elapsed_sec, anim_sub_ms, phase, inhale_phase
+// Rewinds Cycle progression to the start of an Inhale Phase. Shared by Reset
+// (Top Button long) and Breathing Technique cycling (Middle Button long).
+static void reset_cycle_position(void) {
   g_state.cycle_elapsed_sec = 0;
   g_state.anim_sub_ms = 0;
   g_state.current_phase = PHASE_INHALE;
+}
+
+// glossary: reset, session, completed_cycles, hr_sample_buffer
+static void reset_session() {
+  reset_cycle_position();
+  g_state.session_elapsed_ms = 0;
   g_state.completed_cycles = 0;
   g_state.hr_write_idx = 0;
   g_state.hr_sample_count = 0;
+  g_state.current_hr = 0;
 }
 
-// glossary: animation_timer, filler_circle, phase_fill
+// glossary: animation_timer, filler_circle, phase_fill, phase_dot_indicator
 // 100 ms Animation Timer callback. Skips work while in Pause State, but always
 // re-arms itself. Only advances Anim Sub Ms + redraws Filler Circle — no Vibes.
+// When the current Phase changes, also dirties the Technique Display so the
+// Phase Dot Indicator tracks the breath in real time without redrawing the
+// whole top container 10 Hz.
 static void anim_timer_callback(void *data) {
   if (!g_state.paused) {
+    BreathingPhase prev_phase = g_state.current_phase;
     breathing_update(100);
     ui_update_breathing();
+    if (g_state.current_phase != prev_phase) {
+      ui_update_technique();
+    }
   }
   s_animation_timer = app_timer_register(100, anim_timer_callback, NULL);
 }
@@ -40,20 +56,33 @@ static void tick_handler(struct tm *tick_time, TimeUnits units_changed) {
   if (!g_state.paused && (units_changed & SECOND_UNIT)) {
     g_state.session_elapsed_ms += 1000;            // glossary: session_elapsed
 
+    BreathingPhase prev_phase = g_state.current_phase;
     bool wrapped = breathing_tick();               // glossary: cycle_wrap
     vibration_trigger_for_second(g_state.cycle_elapsed_sec);  // glossary: vibe_mode_dispatch
+    if (g_state.current_phase != prev_phase) {
+      // glossary: phase_dot_indicator
+      ui_update_technique();
+    }
 
     if (wrapped) {
       // glossary: hr_sample, hr_sample_buffer, hr_write_index, display_minimal
-      // Skip HR Sample capture entirely in DISPLAY_MINIMAL (sensor is also idled).
-      if (g_state.display_mode != DISPLAY_MINIMAL) {
-        HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
-        if (hr > 30 && hr < 250) {
-          g_state.hr_samples[g_state.hr_write_idx] = (int16_t)hr;
-          g_state.hr_write_idx = (g_state.hr_write_idx + 1) % HR_SAMPLE_BUFFER;
-          if (g_state.hr_sample_count < HR_SAMPLE_BUFFER) g_state.hr_sample_count++;
-        }
+      // Every Cycle Wrap consumes one slot. In DISPLAY_MINIMAL or when the
+      // sensor returns an out-of-range value, the slot is filled with
+      // HR_SAMPLE_NONE so the HR Graph can render a visible gap for that
+      // Cycle instead of collapsing missing Cycles out of the plot.
+      // current_hr is only updated on a valid reading — it sticks at the
+      // last valid BPM until the next one arrives.
+      HealthValue hr = (g_state.display_mode == DISPLAY_MINIMAL)
+                         ? 0
+                         : health_service_peek_current_value(HealthMetricHeartRateBPM);
+      if (hr > 30 && hr < 250) {
+        g_state.hr_samples[g_state.hr_write_idx] = (int16_t)hr;
+        g_state.current_hr = (int16_t)hr;
+      } else {
+        g_state.hr_samples[g_state.hr_write_idx] = HR_SAMPLE_NONE;
       }
+      g_state.hr_write_idx = (g_state.hr_write_idx + 1) % HR_SAMPLE_BUFFER;
+      if (g_state.hr_sample_count < HR_SAMPLE_BUFFER) g_state.hr_sample_count++;
 
       // glossary: completed_cycles, target_cycles, session_complete_vibe
       g_state.completed_cycles++;
@@ -79,6 +108,8 @@ static void up_click_handler(ClickRecognizerRef recognizer, void *context) {
 // Captures one synchronous HR Sample at launch / on Reset, so Current HR
 // Display and HR Graph are non-blank from the start when the sensor has data.
 // No-op in DISPLAY_MINIMAL — sensor is idled and HR UI is hidden.
+// Only called from init / Reset (where buffer is being freshly initialized);
+// the buffer-preserving Display Mode switch path does its own peek inline.
 static void sample_initial_hr(void) {
   if (g_state.display_mode == DISPLAY_MINIMAL) return;
   HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
@@ -86,6 +117,7 @@ static void sample_initial_hr(void) {
     g_state.hr_samples[0] = (int16_t)hr;
     g_state.hr_write_idx = 1;
     g_state.hr_sample_count = 1;
+    g_state.current_hr = (int16_t)hr;
   }
 }
 
@@ -106,6 +138,19 @@ static void select_click_handler(ClickRecognizerRef recognizer, void *context) {
   ui_update_status();
 }
 
+// glossary: middle_button, breathing_technique, technique_persist_key,
+//           phase_duration_table, classic_technique
+// Middle Button long press → advance Breathing Technique through the Phase
+// Duration Table and persist. Resets Cycle position only — Session Elapsed,
+// Completed Cycles, and the HR Sample Buffer are intentionally kept so the
+// user can compare techniques inside the same session.
+static void select_long_click_handler(ClickRecognizerRef recognizer, void *context) {
+  g_state.breathing_technique = (g_state.breathing_technique + 1) % TECHNIQUE_COUNT;
+  persist_write_int(2, g_state.breathing_technique);
+  reset_cycle_position();
+  ui_update_all();
+}
+
 // glossary: bottom_button, display_mode, backlight_always_on, backlight_persist_key
 // Bottom Button → advance Display Mode (Default → Backlight → Minimal → …),
 // persist, apply backlight + HR sampling + layout.
@@ -118,27 +163,31 @@ static void down_click_handler(ClickRecognizerRef recognizer, void *context) {
   (void)health_service_set_heart_rate_sample_period(
       g_state.display_mode == DISPLAY_MINIMAL ? 0 : 16);
 
-  // Leaving MINIMAL: grab one HR Sample synchronously so Current HR Display
-  // and HR Graph populate immediately on the mode switch, without waiting for
-  // the next Cycle Wrap.
+  // Leaving MINIMAL: peek the sensor once to refresh Current HR Display
+  // without touching the HR Sample Buffer — the buffer is preserved across
+  // Display Mode switches so the user sees their prior HR Graph history
+  // (with a visible gap representing the Cycles spent in MINIMAL). The next
+  // Cycle Wrap will push the proper sample to the buffer.
   if (prev_mode == DISPLAY_MINIMAL && g_state.display_mode != DISPLAY_MINIMAL) {
-    sample_initial_hr();
+    HealthValue hr = health_service_peek_current_value(HealthMetricHeartRateBPM);
+    if (hr > 30 && hr < 250) g_state.current_hr = (int16_t)hr;
   }
 
   ui_apply_display_mode();
   ui_update_all();
 }
 
-// glossary: top_button, middle_button, bottom_button
+// glossary: top_button, middle_button, middle_button_long, bottom_button
 static void click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_UP, up_click_handler);
   window_long_click_subscribe(BUTTON_ID_UP, 500, up_long_click_handler, NULL);
   window_single_click_subscribe(BUTTON_ID_SELECT, select_click_handler);
+  window_long_click_subscribe(BUTTON_ID_SELECT, 500, select_long_click_handler, NULL);
   window_single_click_subscribe(BUTTON_ID_DOWN, down_click_handler);
 }
 
-// glossary: vibe_mode_persist_key, backlight_persist_key, initial_hr_sample,
-//           tick_handler, animation_timer
+// glossary: vibe_mode_persist_key, backlight_persist_key, technique_persist_key,
+//           initial_hr_sample, tick_handler, animation_timer
 static void init() {
   g_state.paused = false;
   g_state.vibration_mode = persist_exists(0) ? persist_read_int(0) : VIBE_EVERY_SECOND;
@@ -146,6 +195,10 @@ static void init() {
   // returns 0 for that, which maps to DISPLAY_DEFAULT — acceptable migration.
   g_state.display_mode = persist_exists(1) ? persist_read_int(1) : DISPLAY_DEFAULT;
   if (g_state.display_mode > DISPLAY_MINIMAL) g_state.display_mode = DISPLAY_DEFAULT;
+  // glossary: breathing_technique, classic_technique
+  // Absent on builds before techniques shipped → fall back to Classic.
+  g_state.breathing_technique = persist_exists(2) ? persist_read_int(2) : TECHNIQUE_CLASSIC;
+  if (g_state.breathing_technique >= TECHNIQUE_COUNT) g_state.breathing_technique = TECHNIQUE_CLASSIC;
   g_state.current_time = time(NULL);
   reset_session();
 
