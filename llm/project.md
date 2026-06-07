@@ -228,7 +228,7 @@ Single container Layer hosting all top-row elements:
 - **Session Elapsed Display** — right half row 1, GOTHIC_24_BOLD, cyan.
 - **Cycle Counter Display** — right half row 2, GOTHIC_18_BOLD, white, format `X/20`.
 - **Current HR Display** — right half row 3, GOTHIC_18_BOLD, white, format `NN` or `--`.
-- **Status Strip** — centered horizontally near the top: Pause Indicator (when visible), Vibe Indicator, Backlight Indicator. Indicators are spaced by 18 px; the entire block recenters when Pause Indicator toggles.
+- **Status Strip** — centered horizontally near the top: Pause Indicator (when visible), Vibe Indicator, Backlight Indicator. Indicators are spaced by 11 px; the entire block recenters when Pause Indicator toggles.
 - Round-watch safe-area margins via `PBL_IF_ROUND_ELSE`.
 
 ### 5.2 Slot 1 — Breathing Circle (41%)

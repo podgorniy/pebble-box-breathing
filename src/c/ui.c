@@ -179,7 +179,7 @@ static void top_container_update_proc(Layer *layer, GContext *ctx) {
   int row2_h = 18;  // cycle counter (GOTHIC_18_BOLD)
   int row3_h = 18;  // HR (GOTHIC_18_BOLD)
   
-  int icon_spacing = 18;
+  int icon_spacing = 11;
   // Align icons vertically with text - center of line height
   int icon_center_y = top + row1_h / 2 + 4;
 
