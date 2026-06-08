@@ -71,19 +71,66 @@ static void breathing_update_proc(Layer *layer, GContext *ctx) {
   if (max_r < min_r) max_r = min_r;
 
   float fill = breathing_get_fill();                       // glossary: phase_fill
+  
+  const TechniquePreset *t = technique_current();
+  uint8_t phase_dur_sec = technique_phase_duration_sec(t, g_state.current_phase);
+  if (phase_dur_sec == 0) phase_dur_sec = 1;
+
   // glossary: display_battery_saver
   // Pin Filler Circle at its smallest state (radius = min_r, the Exhale
   // endpoint) so the screen never needs to redraw between Phases.
   if (g_state.display_mode == DISPLAY_BATTERY_SAVER) {
     fill = 0.0f;
   }
-  int radius = min_r + (int)((max_r - min_r) * fill + 0.5f);
 
+  int radius = min_r + (int)((max_r - min_r) * fill + 0.5f);
   GPoint center = GPoint(cx, cy);
 
   // glossary: filler_circle  (solid cyan; white fallback on mono)
   graphics_context_set_fill_color(ctx, COLOR_FALLBACK(GColorCyan, GColorWhite));
   graphics_fill_circle(ctx, center, radius);
+
+  // Draw the inner small unanimated circle sectors
+  GColor color_cyan = COLOR_FALLBACK(GColorCyan, GColorWhite);
+  GColor color_blue = COLOR_FALLBACK(GColorOxfordBlue, GColorBlack);
+
+  GColor inner_bg = color_blue;
+  GColor inner_fg = color_cyan;
+  float inner_fill = 0.0f;
+
+  if (g_state.display_mode != DISPLAY_BATTERY_SAVER) {
+    uint32_t phase_start_ms = technique_phase_start_sec(t, g_state.current_phase) * 1000;
+    uint32_t phase_dur_ms = phase_dur_sec * 1000;
+    uint32_t ms = g_state.cycle_elapsed_sec * 1000 + g_state.anim_sub_ms;
+    uint32_t phase_elapsed_ms = (ms >= phase_start_ms) ? (ms - phase_start_ms) : 0;
+    if (phase_elapsed_ms > phase_dur_ms) phase_elapsed_ms = phase_dur_ms;
+    inner_fill = phase_elapsed_ms / (float)phase_dur_ms;
+  }
+
+  if (g_state.current_phase == PHASE_INHALE) {
+    inner_bg = color_blue;
+    inner_fg = color_cyan;
+  } else if (g_state.current_phase == PHASE_EXHALE) {
+    inner_bg = color_blue;
+    inner_fg = color_cyan;
+  } else if (g_state.current_phase == PHASE_HOLD_FULL) {
+    inner_bg = color_cyan;
+    inner_fg = color_blue;
+  } else {
+    inner_bg = color_cyan;
+    inner_fg = color_blue;
+  }
+
+  graphics_context_set_fill_color(ctx, inner_bg);
+  graphics_fill_circle(ctx, center, min_r);
+
+  graphics_context_set_fill_color(ctx, inner_fg);
+  GRect inner_rect = GRect(cx - min_r, cy - min_r, min_r * 2, min_r * 2);
+
+  int32_t angle_end = (int32_t)(TRIG_MAX_ANGLE * inner_fill);
+  if (angle_end > 0) {
+    graphics_fill_radial(ctx, inner_rect, GOvalScaleModeFitCircle, min_r, 0, angle_end);
+  }
 
   // glossary: exhaled_reference_outline, inhaled_reference_outline,
   //           display_battery_saver
