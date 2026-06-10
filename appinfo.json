@@ -14,6 +14,12 @@
     "media": [
       {
         "type": "png",
+        "name": "ICON_25x25",
+        "file": "icon_25x25.png",
+        "menuIcon": true
+      },
+      {
+        "type": "png",
         "name": "ICON_80x80",
         "file": "icon_80x80.png"
       },

@@ -10,8 +10,14 @@
         "messageKeys": [],
         "projectType": "native",
         "sources": ["src/c"],
-        "resources": {
+            "resources": {
             "media": [
+                {
+                    "type": "png",
+                    "name": "ICON_25x25",
+                    "file": "icon_25x25.png",
+                    "menuIcon": true
+                },
                 {
                     "type": "png",
                     "name": "ICON_80x80",
